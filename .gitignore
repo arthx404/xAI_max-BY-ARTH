@@ -1,0 +1,6 @@
+node_modules
+.env
+.DS_Store
+archive.zip
+*.log
+imprtance backend and more parts/
