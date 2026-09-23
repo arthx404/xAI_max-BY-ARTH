@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>xAI Max — Multi-Agent AI Platform</title>
+  <meta name="description" content="The world's most powerful multi-agent AI assistant. 12+ NVIDIA NIM frontier models in a stunning Apple Liquid Glass interface." />
+  <meta name="theme-color" content="#06070a" />
+
+  <!-- Preconnect -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+  <!-- Fonts: Inter + Space Grotesk -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <!-- Highlight.js for code syntax -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/tokyo-night-dark.min.css" />
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+  <!-- Marked.js for markdown -->
+  <script defer src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+  <!-- Main styles -->
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ══ Aurora Background ══════════════════════════════════════════════ -->
+  <div class="aurora-bg" aria-hidden="true">
+    <div class="aurora-orb aurora-orb-1"></div>
+    <div class="aurora-orb aurora-orb-2"></div>
+    <div class="aurora-orb aurora-orb-3"></div>
+    <div class="aurora-noise"></div>
+  </div>
+
+  <!-- ══ App Shell ══════════════════════════════════════════════════════ -->
+  <div class="app-shell" id="app-shell">
+
+    <!-- ── Sidebar ───────────────────────────────────────────────── -->
+    <aside class="sidebar glass-panel" id="sidebar" role="navigation" aria-label="Conversation history">
+      <div class="sidebar-header">
+        <div class="brand">
+          <span class="brand-icon">✦</span>
+          <span class="brand-name">xAI Max</span>
+        </div>
+        <button class="icon-btn" id="btn-sidebar-close" aria-label="Close sidebar" title="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <button class="new-chat-btn" id="btn-new-chat-sidebar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+        New Conversation
+      </button>
+
+      <div class="sidebar-section-label">Recent</div>
+      <div class="history-list" id="history-list" role="list">
+        <!-- Populated by ui.js -->
+        <div class="history-empty" id="history-empty">
+          <span>No conversations yet</span>
+        </div>
+      </div>
+
+      <div class="sidebar-footer">
+        <button class="sidebar-footer-btn" id="btn-clear-history">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+          Clear History
+        </button>
+        <button class="sidebar-footer-btn" id="btn-export-chat">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          Export Chat
+        </button>
+        <button class="sidebar-footer-btn" id="btn-auth" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg>
+          <span id="auth-label">Sign in with Google</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- ── Sidebar Overlay ───────────────────────────────────────── -->
+    <div class="sidebar-overlay" id="sidebar-overlay" aria-hidden="true"></div>
+
+    <!-- ── Main ─────────────────────────────────────────────────── -->
+    <main class="main" id="main">
+
+      <!-- Top Bar -->
+      <header class="topbar glass-pill" id="topbar" role="banner">
+        <button class="icon-btn" id="btn-sidebar-open" aria-label="Open sidebar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+        </button>
+
+        <div class="topbar-center">
+          <div class="active-agent-badge" id="active-agent-badge">
+            <span class="agent-emoji" id="topbar-agent-emoji">🔥</span>
+            <span class="agent-label" id="topbar-agent-name">Llama 3.3 70B</span>
+            <span class="agent-tag" id="topbar-agent-specialty">Daily Workhorse</span>
+          </div>
+        </div>
+
+        <div class="topbar-right">
+          <div class="token-counter" id="token-counter" title="Context tokens used">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+            <span id="token-count">0</span>
+          </div>
+          <div class="status-dot" id="status-dot" title="Connected"></div>
+          <button class="icon-btn" id="btn-settings" aria-label="Settings">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- Chat Feed -->
+      <div class="chat-feed" id="chat-feed" role="log" aria-live="polite" aria-label="Conversation">
+
+        <!-- Welcome Screen (shown when no messages) -->
+        <div class="welcome-screen" id="welcome-screen">
+          <div class="welcome-logo">
+            <div class="welcome-orb">✦</div>
+          </div>
+          <h1 class="welcome-title">xAI Max</h1>
+          <p class="welcome-subtitle">The world's most powerful multi-agent AI.<br>Choose your agent. Ask anything.</p>
+          <div class="welcome-capabilities" style="display: none;"></div>
+          <div class="welcome-suggestions" id="welcome-suggestions">
+            <button class="suggestion-card" data-prompt="Explain quantum entanglement in simple terms, then give me a practical example.">
+              <span class="sug-icon">⚛️</span>
+              <span class="sug-text">Explain quantum entanglement simply</span>
+            </button>
+            <button class="suggestion-card" data-prompt="Write a complete Python web scraper with async support, error handling, and rate limiting.">
+              <span class="sug-icon">🐍</span>
+              <span class="sug-text">Write an async Python web scraper</span>
+            </button>
+            <button class="suggestion-card" data-prompt="What are the most important AI developments in 2025 and how do they impact the future?">
+              <span class="sug-icon">🤖</span>
+              <span class="sug-text">Latest AI breakthroughs in 2025</span>
+            </button>
+            <button class="suggestion-card" data-prompt="Help me design a scalable microservices architecture for a real-time chat application.">
+              <span class="sug-icon">🏗️</span>
+              <span class="sug-text">Design a scalable chat architecture</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Messages Container -->
+        <div class="messages-container" id="messages-container"></div>
+        
+        <!-- Scroll to bottom button -->
+        <button class="btn-scroll-bottom" id="btn-scroll-bottom" aria-label="Scroll to bottom">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
+        </button>
+
+      </div>
+
+      <!-- Bottom Dock -->
+      <div class="bottom-dock" id="bottom-dock">
+
+        <!-- Agent Picker Strip -->
+        <div class="agent-strip" id="agent-strip" role="listbox" aria-label="Select AI agent">
+          <!-- Populated by ui.js -->
+        </div>
+
+        <!-- Input Area -->
+        <div class="input-area glass-panel" id="input-area">
+          <div class="attachment-preview" id="attachment-preview" style="display: none;"></div>
+          <div class="input-wrapper">
+            <textarea
+              id="chat-input"
+              class="chat-input"
+              placeholder="Message xAI Max…"
+              rows="1"
+              maxlength="32000"
+              aria-label="Type your message"
+              aria-multiline="true"
+            ></textarea>
+          </div>
+          <div class="input-actions">
+            <div class="input-actions-left">
+              <button class="action-btn" id="btn-voice" aria-label="Voice input" title="Voice input">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/></svg>
+              </button>
+              <input type="file" id="file-upload" accept="image/*,.txt,.md,.json,.csv,.js,.py,.html,.css" style="display: none;" multiple>
+              <button class="action-btn" id="btn-attach" aria-label="Attach file" title="Attach file">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+              </button>
+              <div class="char-counter" id="char-counter">0 / 32000</div>
+            </div>
+            <div class="input-actions-right">
+              <button class="send-btn" id="btn-send" aria-label="Send message" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <p class="disclaimer">xAI Max can make mistakes. Verify important information.</p>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- ══ Settings Modal ═════════════════════════════════════════════════ -->
+  <div class="modal-overlay" id="settings-overlay" role="dialog" aria-modal="true" aria-labelledby="settings-title" hidden>
+    <div class="modal glass-panel" id="settings-modal">
+      <div class="modal-header">
+        <h2 id="settings-title">Settings</h2>
+        <button class="icon-btn" id="btn-settings-close" aria-label="Close settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <div class="setting-note">
+          NVIDIA access is securely managed by the xAI Max server.
+        </div>
+
+        <!-- System Prompt -->
+        <div class="setting-group">
+          <label class="setting-label" for="system-prompt-input">
+            Custom System Prompt <span class="setting-sublabel">(optional)</span>
+          </label>
+          <textarea id="system-prompt-input" class="setting-input setting-textarea" placeholder="Override the default system prompt for any agent…" rows="3"></textarea>
+        </div>
+
+        <!-- Temperature -->
+        <div class="setting-group">
+          <label class="setting-label">
+            Temperature <span class="setting-sublabel" id="temp-value">0.7</span>
+          </label>
+          <div class="slider-wrapper">
+            <span class="slider-label">Precise</span>
+            <input type="range" id="temperature-slider" class="slider" min="0" max="2" step="0.1" value="0.7" />
+            <span class="slider-label">Creative</span>
+          </div>
+        </div>
+
+        <!-- Max Tokens -->
+        <div class="setting-group">
+          <label class="setting-label" for="max-tokens-input">Max Response Length</label>
+          <select id="max-tokens-input" class="setting-input setting-select">
+            <option value="1024">Short (1K tokens)</option>
+            <option value="2048">Medium (2K tokens)</option>
+            <option value="4096" selected>Long (4K tokens)</option>
+            <option value="8192">Extended (8K tokens)</option>
+          </select>
+        </div>
+
+        <!-- Theme / Aurora -->
+        <div class="setting-group">
+          <label class="setting-label">Aurora Intensity</label>
+          <div class="slider-wrapper">
+            <span class="slider-label">Subtle</span>
+            <input type="range" id="aurora-slider" class="slider" min="0" max="100" step="10" value="60" />
+            <span class="slider-label">Vivid</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn-secondary" id="btn-settings-reset">Reset</button>
+        <button class="btn-primary" id="btn-settings-save">Save Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ Agent Detail Modal ══════════════════════════════════════════════ -->
+  <div class="modal-overlay" id="agent-overlay" role="dialog" aria-modal="true" aria-labelledby="agent-modal-title" hidden>
+    <div class="modal glass-panel" id="agent-modal">
+      <div class="modal-header">
+        <h2 id="agent-modal-title">Choose Agent</h2>
+        <button class="icon-btn" id="btn-agent-close" aria-label="Close agent picker">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="agent-grid" id="agent-grid" role="listbox" aria-label="AI Agents">
+        <!-- Populated by ui.js -->
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ Toast Container ════════════════════════════════════════════════ -->
+  <div class="toast-container" id="toast-container" aria-live="assertive" role="status"></div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="app.js"></script>
+  <script src="ui.js"></script>
+</body>
+</html>
