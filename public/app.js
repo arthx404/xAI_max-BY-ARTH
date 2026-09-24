@@ -47,9 +47,10 @@ const $$ = (sel, ctx = document) => ctx.querySelector(sel);
 async function init() {
   loadSettings();
   loadConversations();
-  await checkServerConfig();
+  const configPromise = checkServerConfig();
+  const agentsPromise = fetchAgents();
   await initSupabase();
-  await fetchAgents();
+  await Promise.all([configPromise, agentsPromise]);
   startNewConversation(false);
   setupKeyboardShortcuts();
   applyAuroraLevel(State.settings.auroraLevel);
@@ -77,6 +78,8 @@ async function loadCloudConversations() {
     tokens: conversation.tokens || 0,
     updated: Date.parse(conversation.updated_at) || Date.now(),
   }));
+  // The query is protected by Supabase RLS; only merge records belonging to
+  // the current account into that account's local cache.
   const localById = new Map(State.conversations.map(conversation => [conversation.id, conversation]));
   cloudConversations.forEach(conversation => localById.set(conversation.id, conversation));
   State.conversations = [...localById.values()]
@@ -98,7 +101,10 @@ async function saveConversationToCloud(conversation) {
     tokens: conversation.tokens || 0,
     updated_at: new Date(conversation.updated || Date.now()).toISOString(),
   });
-  if (error) console.error('[xAI Max] Cloud history save failed:', error);
+  if (error) {
+    console.error('[xAI Max] Cloud history save failed:', error);
+    UI.showToast('Cloud history could not be saved. Check your Supabase policies.', 'error');
+  }
 }
 
 async function migrateGuestConversations(conversations) {
@@ -106,6 +112,15 @@ async function migrateGuestConversations(conversations) {
   for (const conversation of conversations) {
     await saveConversationToCloud(conversation);
   }
+  localStorage.removeItem(`${STORAGE_KEYS.conversations}_guest`);
+}
+
+async function loadSignedInHistory(guestConversations = []) {
+  if (!State.user) return;
+  loadConversations();
+  await loadCloudConversations();
+  await migrateGuestConversations(guestConversations);
+  await loadCloudConversations();
 }
 
 async function saveQuestionLogToCloud(question, answer, agent) {
@@ -118,7 +133,10 @@ async function saveQuestionLogToCloud(question, answer, agent) {
     agent_id: agent?.id || null,
     model: agent?.model || null,
   });
-  if (error) console.error('[xAI Max] Question log save failed:', error);
+  if (error) {
+    console.error('[xAI Max] Question log save failed:', error);
+    UI.showToast('Answer was not saved to Supabase. Check your account and policies.', 'error');
+  }
 }
 
 async function initSupabase() {
@@ -154,25 +172,22 @@ async function initSupabase() {
     updateAuthState(session?.user || null);
     if (session?.user) {
       const guestConversations = State.conversations;
-      loadConversations();
-      await loadCloudConversations();
-      await migrateGuestConversations(guestConversations);
+      await loadSignedInHistory(guestConversations);
     }
-    State.supabase.auth.onAuthStateChange((_event, nextSession) => {
+    State.supabase.auth.onAuthStateChange(async (_event, nextSession) => {
       updateAuthState(nextSession?.user || null);
       if (nextSession?.user) {
         const guestConversations = State.conversations;
-        loadConversations();
-        loadCloudConversations();
-        migrateGuestConversations(guestConversations);
+        await loadSignedInHistory(guestConversations);
       }
       else {
         State.conversations = [];
+        State.activeConvId = null;
         UI.renderHistoryList();
       }
     });
 
-    authButton?.addEventListener('click', async () => {
+    const signInOrOut = async () => {
       try {
         if (State.user) {
           const { error } = await State.supabase.auth.signOut();
@@ -188,7 +203,9 @@ async function initSupabase() {
         console.error('[xAI Max] Google sign-in failed:', error);
         UI.showToast(`❌ Google sign-in failed: ${error.message}`, 'error');
       }
-    });
+    };
+    authButton?.addEventListener('click', signInOrOut);
+    $('account-menu-action')?.addEventListener('click', signInOrOut);
   } catch (error) {
     console.error('[xAI Max] Supabase initialization failed:', error);
     if (authButton) authButton.style.display = 'none';
@@ -206,6 +223,24 @@ function updateAuthState(user) {
   if (label) label.textContent = user ? 'Sign out' : 'Sign in with Google';
   button.setAttribute('aria-label', user ? 'Sign out of xAI Max' : 'Sign in with Google');
   button.title = user ? `Signed in as ${user.email || 'your Google account'}` : 'Sign in with Google';
+  const avatarUrl = user?.user_metadata?.avatar_url || user?.user_metadata?.picture || '';
+  const displayName = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email || 'Google account';
+  const avatarElements = [$('account-avatar'), $('account-menu-avatar')].filter(Boolean);
+  avatarElements.forEach(avatar => {
+    avatar.textContent = user ? (displayName.charAt(0).toUpperCase() || 'U') : '?';
+    avatar.classList.toggle('account-avatar-fallback', !avatarUrl);
+    avatar.style.backgroundImage = avatarUrl ? `url("${avatarUrl.replace(/"/g, '')}")` : '';
+  });
+  const accountButton = $('btn-account');
+  const accountLabel = $('account-button-label');
+  const menuName = $('account-menu-name');
+  const menuEmail = $('account-menu-email');
+  const menuAction = $('account-menu-action');
+  if (accountButton) accountButton.setAttribute('aria-label', user ? `Open account menu for ${displayName}` : 'Sign in with Google');
+  if (accountLabel) accountLabel.textContent = user ? 'Account' : 'Sign in';
+  if (menuName) menuName.textContent = user ? displayName : 'Guest';
+  if (menuEmail) menuEmail.textContent = user?.email || 'Sign in to sync chats';
+  if (menuAction) menuAction.textContent = user ? 'Sign out' : 'Sign in with Google';
 }
 
 async function checkServerConfig() {
@@ -296,7 +331,7 @@ function startNewConversation(render = true) {
   }
 }
 
-function persistCurrentConversation() {
+async function persistCurrentConversation() {
   if (!State.messages.length) return;
 
   const title  = State.messages[0]?.content?.slice(0, 60) || 'Conversation';
@@ -314,7 +349,7 @@ function persistCurrentConversation() {
   if (exists >= 0) State.conversations[exists] = conv;
   else             State.conversations.unshift(conv);
   saveConversations();
-  saveConversationToCloud(conv);
+  await saveConversationToCloud(conv);
   UI.renderHistoryList();
 }
 
@@ -353,9 +388,12 @@ function deleteConversation(id) {
   State.conversations = State.conversations.filter(c => c.id !== id);
   saveConversations();
   if (State.supabase && State.user) {
-    State.supabase.from('conversations').delete().eq('id', id)
+    State.supabase.from('conversations').delete().eq('id', id).eq('user_id', State.user.id)
       .then(({ error }) => {
-        if (error) console.error('[xAI Max] Cloud history delete failed:', error);
+        if (error) {
+          console.error('[xAI Max] Cloud history delete failed:', error);
+          UI.showToast('Cloud conversation could not be deleted.', 'error');
+        }
       });
   }
   if (State.activeConvId === id) startNewConversation(true);
@@ -366,7 +404,10 @@ function clearAllHistory() {
   if (State.supabase && State.user) {
     State.supabase.from('conversations').delete().eq('user_id', State.user.id)
       .then(({ error }) => {
-        if (error) console.error('[xAI Max] Cloud history clear failed:', error);
+        if (error) {
+          console.error('[xAI Max] Cloud history clear failed:', error);
+          UI.showToast('Cloud history could not be cleared.', 'error');
+        }
       });
   }
   State.conversations = [];
@@ -564,7 +605,7 @@ async function sendMessage(content) {
       const question = typeof userMessage?.content === 'string'
         ? userMessage.content
         : JSON.stringify(userMessage?.content || '');
-      saveQuestionLogToCloud(question, assistantContent, State.resolvedAgent || State.activeAgent);
+      await saveQuestionLogToCloud(question, assistantContent, State.resolvedAgent || State.activeAgent);
     } else {
       // Clean up empty bubble if stream failed or returned no text
       bubble?.closest('.message')?.remove();
