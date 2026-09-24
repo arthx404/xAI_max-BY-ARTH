@@ -17,6 +17,10 @@ const { OpenAI } = require('openai');
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
+// Render and other reverse proxies provide the real client IP in
+// X-Forwarded-For. Trust the first proxy so rate limiting works correctly.
+app.set('trust proxy', 1);
+
 // ─── NVIDIA NIM Client ───────────────────────────────────────────────────────
 // Key is read from .env or passed per-request from the client settings modal
 const createClient = (apiKey) =>

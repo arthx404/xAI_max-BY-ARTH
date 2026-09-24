@@ -98,7 +98,10 @@ async function saveConversationToCloud(conversation) {
     tokens: conversation.tokens || 0,
     updated_at: new Date(conversation.updated || Date.now()).toISOString(),
   });
-  if (error) console.error('[xAI Max] Cloud history save failed:', error);
+  if (error) {
+    console.error('[xAI Max] Cloud history save failed:', error);
+    UI.showToast('Cloud history could not be saved. Check your Supabase policies.', 'error');
+  }
 }
 
 async function migrateGuestConversations(conversations) {
@@ -118,7 +121,10 @@ async function saveQuestionLogToCloud(question, answer, agent) {
     agent_id: agent?.id || null,
     model: agent?.model || null,
   });
-  if (error) console.error('[xAI Max] Question log save failed:', error);
+  if (error) {
+    console.error('[xAI Max] Question log save failed:', error);
+    UI.showToast('Answer was not saved to Supabase. Check your account and policies.', 'error');
+  }
 }
 
 async function initSupabase() {
@@ -296,7 +302,7 @@ function startNewConversation(render = true) {
   }
 }
 
-function persistCurrentConversation() {
+async function persistCurrentConversation() {
   if (!State.messages.length) return;
 
   const title  = State.messages[0]?.content?.slice(0, 60) || 'Conversation';
@@ -314,7 +320,7 @@ function persistCurrentConversation() {
   if (exists >= 0) State.conversations[exists] = conv;
   else             State.conversations.unshift(conv);
   saveConversations();
-  saveConversationToCloud(conv);
+  await saveConversationToCloud(conv);
   UI.renderHistoryList();
 }
 
@@ -564,7 +570,7 @@ async function sendMessage(content) {
       const question = typeof userMessage?.content === 'string'
         ? userMessage.content
         : JSON.stringify(userMessage?.content || '');
-      saveQuestionLogToCloud(question, assistantContent, State.resolvedAgent || State.activeAgent);
+      await saveQuestionLogToCloud(question, assistantContent, State.resolvedAgent || State.activeAgent);
     } else {
       // Clean up empty bubble if stream failed or returned no text
       bubble?.closest('.message')?.remove();
