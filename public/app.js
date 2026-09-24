@@ -77,6 +77,8 @@ async function loadCloudConversations() {
     tokens: conversation.tokens || 0,
     updated: Date.parse(conversation.updated_at) || Date.now(),
   }));
+  // The query is protected by Supabase RLS; only merge records belonging to
+  // the current account into that account's local cache.
   const localById = new Map(State.conversations.map(conversation => [conversation.id, conversation]));
   cloudConversations.forEach(conversation => localById.set(conversation.id, conversation));
   State.conversations = [...localById.values()]
@@ -109,6 +111,15 @@ async function migrateGuestConversations(conversations) {
   for (const conversation of conversations) {
     await saveConversationToCloud(conversation);
   }
+  localStorage.removeItem(`${STORAGE_KEYS.conversations}_guest`);
+}
+
+async function loadSignedInHistory(guestConversations = []) {
+  if (!State.user) return;
+  loadConversations();
+  await loadCloudConversations();
+  await migrateGuestConversations(guestConversations);
+  await loadCloudConversations();
 }
 
 async function saveQuestionLogToCloud(question, answer, agent) {
@@ -160,20 +171,17 @@ async function initSupabase() {
     updateAuthState(session?.user || null);
     if (session?.user) {
       const guestConversations = State.conversations;
-      loadConversations();
-      await loadCloudConversations();
-      await migrateGuestConversations(guestConversations);
+      await loadSignedInHistory(guestConversations);
     }
-    State.supabase.auth.onAuthStateChange((_event, nextSession) => {
+    State.supabase.auth.onAuthStateChange(async (_event, nextSession) => {
       updateAuthState(nextSession?.user || null);
       if (nextSession?.user) {
         const guestConversations = State.conversations;
-        loadConversations();
-        loadCloudConversations();
-        migrateGuestConversations(guestConversations);
+        await loadSignedInHistory(guestConversations);
       }
       else {
         State.conversations = [];
+        State.activeConvId = null;
         UI.renderHistoryList();
       }
     });
@@ -359,9 +367,12 @@ function deleteConversation(id) {
   State.conversations = State.conversations.filter(c => c.id !== id);
   saveConversations();
   if (State.supabase && State.user) {
-    State.supabase.from('conversations').delete().eq('id', id)
+    State.supabase.from('conversations').delete().eq('id', id).eq('user_id', State.user.id)
       .then(({ error }) => {
-        if (error) console.error('[xAI Max] Cloud history delete failed:', error);
+        if (error) {
+          console.error('[xAI Max] Cloud history delete failed:', error);
+          UI.showToast('Cloud conversation could not be deleted.', 'error');
+        }
       });
   }
   if (State.activeConvId === id) startNewConversation(true);
@@ -372,7 +383,10 @@ function clearAllHistory() {
   if (State.supabase && State.user) {
     State.supabase.from('conversations').delete().eq('user_id', State.user.id)
       .then(({ error }) => {
-        if (error) console.error('[xAI Max] Cloud history clear failed:', error);
+        if (error) {
+          console.error('[xAI Max] Cloud history clear failed:', error);
+          UI.showToast('Cloud history could not be cleared.', 'error');
+        }
       });
   }
   State.conversations = [];
