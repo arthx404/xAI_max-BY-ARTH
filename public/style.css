@@ -450,6 +450,66 @@ body {
 
 .topbar-right { display: flex; align-items: center; gap: 8px; }
 
+.account-menu-wrap { position: relative; }
+.account-button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 3px 8px 3px 4px;
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  background: rgba(255,255,255,0.05);
+  color: var(--text-primary);
+  font: 600 11px var(--font-body);
+  cursor: pointer;
+  transition: background var(--t-fast) ease, border-color var(--t-fast) ease;
+}
+.account-button:hover { background: var(--glass-bg-hover); border-color: var(--glass-border-h); }
+.account-avatar {
+  width: 27px;
+  height: 27px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background-color: var(--accent);
+  background-position: center;
+  background-size: cover;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+.account-avatar-fallback { background-image: none !important; }
+.account-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: min(280px, calc(100vw - 24px));
+  padding: 12px;
+  z-index: 250;
+  background: rgba(12,12,14,0.96);
+}
+.account-menu[hidden] { display: none; }
+.account-menu-user { display: flex; align-items: center; gap: 10px; padding: 4px 2px 12px; }
+.account-avatar-large { width: 40px; height: 40px; font-size: 16px; }
+.account-menu-details { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.account-menu-details strong, .account-menu-details span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-menu-details strong { font-size: 13px; }
+.account-menu-details span { color: var(--text-secondary); font-size: 11px; }
+.account-menu-action {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--glass-border);
+  border-radius: 9px;
+  background: var(--accent-dim);
+  color: var(--text-primary);
+  font: 500 12px var(--font-body);
+  cursor: pointer;
+}
+.account-menu-action:hover { background: var(--accent-glow); }
+
 .token-counter {
   display: flex;
   align-items: center;
@@ -1490,6 +1550,7 @@ body {
   .active-agent-badge { min-width: 0; }
   .agent-label { max-width: 30vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .agent-tag, .token-counter { display: none; }
+  .account-button-label { display: none; }
   .chat-feed { padding-top: 70px; }
   .messages-container { padding: 12px 10px 6px; }
   .welcome-screen { min-height: calc(100dvh - 190px); padding: 26px 12px 16px; }

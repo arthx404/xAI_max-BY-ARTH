@@ -40,6 +40,22 @@ document.addEventListener('DOMContentLoaded', () => {
       gfm:      true,
       renderer: buildRenderer(),
     });
+
+    // Account menu
+    const accountButton = document.getElementById('btn-account');
+    const accountMenu = document.getElementById('account-menu');
+    accountButton?.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const open = accountMenu?.hasAttribute('hidden');
+      if (open) accountMenu?.removeAttribute('hidden');
+      else accountMenu?.setAttribute('hidden', '');
+      accountButton.setAttribute('aria-expanded', String(open));
+    });
+    accountMenu?.addEventListener('click', event => event.stopPropagation());
+    document.addEventListener('click', () => {
+      accountMenu?.setAttribute('hidden', '');
+      accountButton?.setAttribute('aria-expanded', 'false');
+    });
     _markedReady = true;
   }
   if (window.hljs) { _hlReady = true; }
@@ -572,9 +588,6 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!window.App?.State?.streaming) handleSend();
     }
   });
-
-  // Send button
-  El.sendBtn().addEventListener('click', handleSend);
 
   // Voice
   document.getElementById('btn-voice').addEventListener('click', toggleVoice);

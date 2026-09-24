@@ -47,9 +47,10 @@ const $$ = (sel, ctx = document) => ctx.querySelector(sel);
 async function init() {
   loadSettings();
   loadConversations();
-  await checkServerConfig();
+  const configPromise = checkServerConfig();
+  const agentsPromise = fetchAgents();
   await initSupabase();
-  await fetchAgents();
+  await Promise.all([configPromise, agentsPromise]);
   startNewConversation(false);
   setupKeyboardShortcuts();
   applyAuroraLevel(State.settings.auroraLevel);
@@ -186,7 +187,7 @@ async function initSupabase() {
       }
     });
 
-    authButton?.addEventListener('click', async () => {
+    const signInOrOut = async () => {
       try {
         if (State.user) {
           const { error } = await State.supabase.auth.signOut();
@@ -202,7 +203,9 @@ async function initSupabase() {
         console.error('[xAI Max] Google sign-in failed:', error);
         UI.showToast(`❌ Google sign-in failed: ${error.message}`, 'error');
       }
-    });
+    };
+    authButton?.addEventListener('click', signInOrOut);
+    $('account-menu-action')?.addEventListener('click', signInOrOut);
   } catch (error) {
     console.error('[xAI Max] Supabase initialization failed:', error);
     if (authButton) authButton.style.display = 'none';
@@ -220,6 +223,24 @@ function updateAuthState(user) {
   if (label) label.textContent = user ? 'Sign out' : 'Sign in with Google';
   button.setAttribute('aria-label', user ? 'Sign out of xAI Max' : 'Sign in with Google');
   button.title = user ? `Signed in as ${user.email || 'your Google account'}` : 'Sign in with Google';
+  const avatarUrl = user?.user_metadata?.avatar_url || user?.user_metadata?.picture || '';
+  const displayName = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email || 'Google account';
+  const avatarElements = [$('account-avatar'), $('account-menu-avatar')].filter(Boolean);
+  avatarElements.forEach(avatar => {
+    avatar.textContent = user ? (displayName.charAt(0).toUpperCase() || 'U') : '?';
+    avatar.classList.toggle('account-avatar-fallback', !avatarUrl);
+    avatar.style.backgroundImage = avatarUrl ? `url("${avatarUrl.replace(/"/g, '')}")` : '';
+  });
+  const accountButton = $('btn-account');
+  const accountLabel = $('account-button-label');
+  const menuName = $('account-menu-name');
+  const menuEmail = $('account-menu-email');
+  const menuAction = $('account-menu-action');
+  if (accountButton) accountButton.setAttribute('aria-label', user ? `Open account menu for ${displayName}` : 'Sign in with Google');
+  if (accountLabel) accountLabel.textContent = user ? 'Account' : 'Sign in';
+  if (menuName) menuName.textContent = user ? displayName : 'Guest';
+  if (menuEmail) menuEmail.textContent = user?.email || 'Sign in to sync chats';
+  if (menuAction) menuAction.textContent = user ? 'Sign out' : 'Sign in with Google';
 }
 
 async function checkServerConfig() {
