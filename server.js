@@ -17,6 +17,10 @@ const { OpenAI } = require('openai');
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
+// Render and other reverse proxies provide the real client IP in
+// X-Forwarded-For. Trust the first proxy so rate limiting works correctly.
+app.set('trust proxy', 1);
+
 // ─── NVIDIA NIM Client ───────────────────────────────────────────────────────
 // Key is read from .env or passed per-request from the client settings modal
 const createClient = (apiKey) =>
@@ -45,7 +49,8 @@ async function* streamNvidiaCompletion({ apiKey, model, messages, temperature, m
   });
 
   if (!response.ok) {
-    const error = new Error(`NVIDIA API returned ${response.status}`);
+    const details = await response.text().catch(() => '');
+    const error = new Error(`NVIDIA API returned ${response.status}${details ? `: ${details.slice(0, 240)}` : ''}`);
     error.status = response.status;
     throw error;
   }
@@ -97,7 +102,7 @@ const AGENTS = [
     id:          'llama-405b',
     name:        'Llama 3.1 405B',
     emoji:       '🦙',
-    model:       'deepseek-ai/deepseek-v4.1-flash',
+    model:       'meta/llama-3.1-405b-instruct',
     description: 'Meta\'s largest open-weight model — 405B parameters, exceptional reasoning and knowledge.',
     specialty:   'General Intelligence',
     speed:       'Deep',
@@ -119,7 +124,7 @@ const AGENTS = [
     id:          'deepseek-r1',
     name:        'DeepSeek R1',
     emoji:       '🔍',
-    model:       'deepseek-ai/deepseek-v4.1-flash',
+    model:       'deepseek-ai/deepseek-r1',
     description: 'Specialized chain-of-thought reasoning model — shows its thinking process for math, logic and science.',
     specialty:   'Chain-of-Thought',
     speed:       'Deep',
@@ -130,7 +135,7 @@ const AGENTS = [
     id:          'deepseek-v3',
     name:        'DeepSeek V3',
     emoji:       '💻',
-    model:       'deepseek-ai/deepseek-v4.1-flash',
+    model:       'deepseek-ai/deepseek-v3.1',
     description: 'DeepSeek\'s latest general model — outstanding at coding, algorithms and technical tasks.',
     specialty:   'Coding & Tech',
     speed:       'Fast',
@@ -141,7 +146,7 @@ const AGENTS = [
     id:          'mistral-large',
     name:        'Mistral Large',
     emoji:       '🌊',
-    model:       'mistralai/mistral-large',
+    model:       'mistralai/mistral-large-2-instruct',
     description: 'Mistral AI\'s flagship model — multilingual, efficient, excellent for writing and analysis.',
     specialty:   'Writing & Analysis',
     speed:       'Fast',
@@ -163,7 +168,7 @@ const AGENTS = [
     id:          'gemma-27b',
     name:        'Gemma 3 27B',
     emoji:       '🌸',
-    model:       'google/gemma-4-31b-it',
+    model:       'google/gemma-3-27b-it',
     description: 'Google\'s open Gemma 3 model — creative, thoughtful, great for nuanced conversations.',
     specialty:   'Creative & Chat',
     speed:       'Fast',
@@ -174,7 +179,7 @@ const AGENTS = [
     id:          'phi-4',
     name:        'Microsoft Phi-4',
     emoji:       '🔷',
-    model:       'microsoft/phi-3.5-moe-instruct',
+    model:       'microsoft/phi-4-mini-instruct',
     description: 'Microsoft\'s small but mighty Phi-4 — punches far above its weight class in reasoning.',
     specialty:   'Efficient Reasoning',
     speed:       'Lightning',
@@ -185,7 +190,7 @@ const AGENTS = [
     id:          'kimi-k1',
     name:        'Kimi K1.5',
     emoji:       '🌙',
-    model:       'moonshotai/kimi-k2.6',
+    model:       'moonshotai/kimi-k2-instruct',
     description: 'Moonshot AI\'s thinking model — exceptional for long-context tasks, coding and multi-hop reasoning.',
     specialty:   'Long Context',
     speed:       'Deep',
@@ -378,19 +383,43 @@ app.post('/api/chat', async (req, res) => {
   let totalTokens = 0;
 
   try {
-    let stream;
+    const requestOptions = () => ({
+      apiKey: resolvedKey,
+      model: agent.model,
+      messages: fullMessages,
+      temperature: Math.min(Math.max(parseFloat(temperature) || 0.7, 0), 2),
+      maxTokens: Math.min(parseInt(maxTokens) || 4096, 8192),
+    });
+    let emittedContent = false;
+    let stream = streamNvidiaCompletion(requestOptions());
+
     try {
-      stream = streamNvidiaCompletion({
-        apiKey: resolvedKey,
-        model: agent.model,
-        messages: fullMessages,
-        temperature: Math.min(Math.max(parseFloat(temperature) || 0.7, 0), 2),
-        maxTokens: Math.min(parseInt(maxTokens) || 4096, 8192),
-      });
+      for await (const chunk of stream) {
+        if (res.writableEnded) break;
+
+        const delta   = chunk.choices?.[0]?.delta?.content || '';
+        const finish  = chunk.choices?.[0]?.finish_reason;
+        const usage   = chunk.usage;
+
+        if (delta) {
+          emittedContent = true;
+          sendEvent({ type: 'delta', content: delta });
+        }
+        if (usage) totalTokens = usage.total_tokens;
+        if (finish) {
+          sendEvent({ type: 'done', finish_reason: finish, total_tokens: totalTokens });
+          break;
+        }
+        if (!res.write('')) {
+          await new Promise(resolve => res.once('drain', resolve));
+        }
+      }
     } catch (err) {
       const fallback = AGENTS.find(candidate => candidate.model === 'nvidia/nemotron-3-super-120b-a12b');
-      const canFallback = [400, 404, 408, 409, 429, 500, 502, 503, 504].includes(err.status) ||
-        ['ETIMEDOUT', 'ECONNRESET', 'UND_ERR_CONNECT_TIMEOUT'].includes(err.code);
+      const canFallback = !emittedContent && (
+        [400, 404, 408, 409, 429, 500, 502, 503, 504].includes(err.status) ||
+        ['ABORT_ERR', 'ECONNRESET', 'ETIMEDOUT', 'UND_ERR_CONNECT_TIMEOUT'].includes(err.code)
+      );
       if (!canFallback || !fallback || fallback.model === agent.model) throw err;
       agent = fallback;
       sendEvent({
@@ -399,16 +428,7 @@ app.post('/api/chat', async (req, res) => {
         requestedAgentId: agentId || 'llama-70b',
         fallback: true
       });
-      stream = streamNvidiaCompletion({
-        apiKey: resolvedKey,
-        model: agent.model,
-        messages: fullMessages,
-        temperature: Math.min(Math.max(parseFloat(temperature) || 0.7, 0), 2),
-        maxTokens: Math.min(parseInt(maxTokens) || 4096, 8192),
-      });
-    }
-
-    for await (const chunk of stream) {
+      for await (const chunk of streamNvidiaCompletion(requestOptions())) {
       if (res.writableEnded) break;
 
       const delta   = chunk.choices?.[0]?.delta?.content || '';
@@ -431,6 +451,7 @@ app.post('/api/chat', async (req, res) => {
       // Backpressure: if client is slow, pause briefly
       if (!res.write('')) {
         await new Promise(resolve => res.once('drain', resolve));
+      }
       }
     }
 
