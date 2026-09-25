@@ -257,20 +257,26 @@ function renderAgentStrip() {
   const visible = agents.slice(0, 7);
 
   visible.forEach(agent => {
+    const isDev = agent.development === true;
     const chip = document.createElement('button');
-    chip.className   = `agent-chip${agent.id === active?.id ? ' active' : ''}`;
+    chip.className   = `agent-chip${agent.id === active?.id ? ' active' : ''}${isDev ? ' dev' : ''}`;
     chip.role        = 'option';
     chip.setAttribute('aria-selected', agent.id === active?.id);
     chip.style.setProperty('--chip-color', agent.color || '#a78bfa');
     chip.innerHTML   = `
       <span class="agent-chip-emoji">${agent.emoji}</span>
       <span class="agent-chip-name">${agent.name}</span>
-      ${agent.speed === 'Lightning' ? `<span class="agent-chip-speed">${agent.speed}</span>` : ''}
+      ${isDev ? `<span class="agent-chip-dev">Dev</span>` : (agent.speed === 'Lightning' ? `<span class="agent-chip-speed">${agent.speed}</span>` : '')}
     `;
-    chip.addEventListener('click', () => {
-      App.selectAgent(agent.id);
-      userScrolled = false;
-    });
+    if (isDev) {
+      chip.disabled = true;
+      chip.title = 'Under development — not available yet';
+    } else {
+      chip.addEventListener('click', () => {
+        App.selectAgent(agent.id);
+        userScrolled = false;
+      });
+    }
     strip.appendChild(chip);
   });
 
@@ -304,8 +310,9 @@ function renderAgentGrid() {
   grid.innerHTML = '';
 
   agents.forEach(agent => {
+    const isDev = agent.development === true;
     const card = document.createElement('div');
-    card.className = `agent-card${agent.id === active?.id ? ' active' : ''}`;
+    card.className = `agent-card${agent.id === active?.id ? ' active' : ''}${isDev ? ' dev' : ''}`;
     card.role      = 'option';
     card.style.setProperty('--agent-color', agent.color || '#a78bfa');
     card.innerHTML = `
@@ -317,12 +324,18 @@ function renderAgentGrid() {
         </div>
       </div>
       <div class="agent-card-desc">${agent.description}</div>
-      <span class="agent-card-speed">⚡ ${agent.speed}</span>
+      <span class="agent-card-speed">${isDev ? '🚧 Under Development' : '⚡ ' + agent.speed}</span>
     `;
-    card.addEventListener('click', () => {
-      App.selectAgent(agent.id);
-      closeAgentModal();
-    });
+    if (isDev) {
+      card.style.opacity = '0.6';
+      card.style.cursor = 'not-allowed';
+      card.title = 'Under development — not available yet';
+    } else {
+      card.addEventListener('click', () => {
+        App.selectAgent(agent.id);
+        closeAgentModal();
+      });
+    }
     grid.appendChild(card);
   });
 }

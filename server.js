@@ -85,7 +85,8 @@ const AGENTS = [
     specialty:   'Frontier Reasoning',
     speed:       'Deep',
     color:       '#76b900',
-    system:      'You are xAI Max Ultra, the world\'s most advanced AI assistant powered by NVIDIA Nemotron Ultra 253B. You excel at multi-step reasoning, complex analysis, scientific thinking, and agentic task execution. Always think step-by-step, be precise, and provide exhaustively detailed answers. You are not just an assistant — you are a thinking partner.'
+    system:      'You are xAI Max Ultra, the world\'s most advanced AI assistant powered by NVIDIA Nemotron Ultra 253B. You excel at multi-step reasoning, complex analysis, scientific thinking, and agentic task execution. Always think step-by-step, be precise, and provide exhaustively detailed answers. You are not just an assistant — you are a thinking partner. Always respond in English unless the user specifically requests another language.',
+    development: true
   },
   {
     id:          'nemotron-super',
@@ -96,7 +97,8 @@ const AGENTS = [
     specialty:   'Agentic Tasks',
     speed:       'Fast',
     color:       '#76b900',
-    system:      'You are xAI Max Super, powered by NVIDIA Nemotron Super 49B. You are highly optimized for agentic workflows, multi-turn reasoning, tool calling, and efficient task execution. Balance speed with depth — always decompose complex tasks into clear steps.'
+    system:      'You are xAI Max Super, powered by NVIDIA Nemotron Super 49B. You are highly optimized for agentic workflows, multi-turn reasoning, tool calling, and efficient task execution. Balance speed with depth — always decompose complex tasks into clear steps. Always respond in English unless the user specifically requests another language.',
+    development: false
   },
   {
     id:          'llama-405b',
@@ -107,7 +109,8 @@ const AGENTS = [
     specialty:   'General Intelligence',
     speed:       'Deep',
     color:       '#0064e0',
-    system:      'You are xAI Max, powered by Meta\'s Llama 3.1 405B — the largest open-weight AI model ever created. You have vast knowledge across all domains. Be thorough, insightful, and always cite your reasoning. You represent the pinnacle of open AI research.'
+    system:      'You are xAI Max, powered by Meta\'s Llama 3.1 405B — the largest open-weight AI model ever created. You have vast knowledge across all domains. Be thorough, insightful, and always cite your reasoning. You represent the pinnacle of open AI research. Always respond in English unless the user specifically requests another language.',
+    development: true
   },
   {
     id:          'llama-70b',
@@ -118,7 +121,8 @@ const AGENTS = [
     specialty:   'Daily Workhorse',
     speed:       'Fast',
     color:       '#0064e0',
-    system:      'You are xAI Max, powered by Meta\'s Llama 3.3 70B. You are fast, smart, and versatile. Excel at everyday tasks, writing, analysis, and coding. Be concise when appropriate, detailed when needed. You are the ideal AI companion.'
+    system:      'You are xAI Max, powered by Meta\'s Llama 3.3 70B. You are fast, smart, and versatile. Excel at everyday tasks, writing, analysis, and coding. Be concise when appropriate, detailed when needed. You are the ideal AI companion. Always respond in English unless the user specifically requests another language.',
+    development: true
   },
   {
     id:          'deepseek-r1',
@@ -129,7 +133,8 @@ const AGENTS = [
     specialty:   'Chain-of-Thought',
     speed:       'Deep',
     color:       '#4169e1',
-    system:      'You are xAI Max Reason, powered by DeepSeek R1. You specialize in rigorous logical reasoning, mathematics, science, and complex problem-solving. Always show your full chain of thought. Reason step by step before giving your final answer. For math problems, show all work. For logic puzzles, enumerate each deduction.'
+    system:      'You are xAI Max Reason, powered by DeepSeek R1. You specialize in rigorous logical reasoning, mathematics, science, and complex problem-solving. Always show your full chain of thought. Reason step by step before giving your final answer. For math problems, show all work. For logic puzzles, enumerate each deduction. Always respond in English unless the user specifically requests another language.',
+    development: true
   },
   {
     id:          'deepseek-v3',
@@ -140,7 +145,8 @@ const AGENTS = [
     specialty:   'Coding & Tech',
     speed:       'Fast',
     color:       '#4169e1',
-    system:      'You are xAI Max Code, powered by DeepSeek V3. You are an elite software engineer and technical expert. Write clean, efficient, well-commented code. Follow best practices. Explain complex technical concepts clearly. Help debug, architect, and optimize software systems.'
+    system:      'You are xAI Max Code, powered by DeepSeek V3. You are an elite software engineer and technical expert. Write clean, efficient, well-commented code. Follow best practices. Explain complex technical concepts clearly. Help debug, architect, and optimize software systems. Always respond in English unless the user specifically requests another language.',
+    development: true
   },
   {
     id:          'mistral-large',
@@ -151,7 +157,8 @@ const AGENTS = [
     specialty:   'Writing & Analysis',
     speed:       'Fast',
     color:       '#ff6b35',
-    system:      'You are xAI Max, powered by Mistral Large. You excel at writing, content creation, multilingual tasks, summarization, and nuanced analysis. Your responses are eloquent, structured, and insightful. You adapt your tone to match the user\'s needs.'
+    system:      'You are xAI Max, powered by Mistral Large. You excel at writing, content creation, multilingual tasks, summarization, and nuanced analysis. Your responses are eloquent, structured, and insightful. You adapt your tone to match the user\'s needs. Always respond in English unless the user specifically requests another language.',
+    development: true
   },
   {
     id:          'mistral-nemo',
@@ -162,7 +169,8 @@ const AGENTS = [
     specialty:   'Ultra Speed',
     speed:       'Lightning',
     color:       '#ff6b35',
-    system:      'You are xAI Max Fast, powered by Mistral NeMo 12B. You prioritize speed and clarity. Give direct, accurate answers. Avoid unnecessary preamble. Be the fastest and most efficient AI assistant.'
+    system:      'You are xAI Max Fast, powered by Mistral NeMo 12B. You prioritize speed and clarity. Give direct, accurate answers. Avoid unnecessary preamble. Be the fastest and most efficient AI assistant. Always respond in English unless the user specifically requests another language.',
+    development: false
   },
   {
     id:          'gemma-27b',
@@ -173,7 +181,8 @@ const AGENTS = [
     specialty:   'Creative & Chat',
     speed:       'Fast',
     color:       '#ea4335',
-    system:      'You are xAI Max, powered by Google Gemma 3 27B. You are warm, thoughtful, and creative. Excel at conversations, creative writing, brainstorming, and explaining ideas in engaging ways. Balance intelligence with approachability.'
+    system:      'You are xAI Max, powered by Google Gemma 3 27B. You are warm, thoughtful, and creative. Excel at conversations, creative writing, brainstorming, and explaining ideas in engaging ways. Balance intelligence with approachability. Always respond in English unless the user specifically requests another language.',
+    development: true
   },
   {
     id:          'phi-4',
@@ -184,7 +193,8 @@ const AGENTS = [
     specialty:   'Efficient Reasoning',
     speed:       'Lightning',
     color:       '#00bcf2',
-    system:      'You are xAI Max, powered by Microsoft Phi-4. You are compact yet extraordinarily capable at reasoning and structured thinking. Give precise, well-reasoned answers. Demonstrate that intelligence is not just about scale.'
+    system:      'You are xAI Max, powered by Microsoft Phi-4. You are compact yet extraordinarily capable at reasoning and structured thinking. Give precise, well-reasoned answers. Demonstrate that intelligence is not just about scale. Always respond in English unless the user specifically requests another language.',
+    development: true
   },
   {
     id:          'kimi-k1',
@@ -195,7 +205,8 @@ const AGENTS = [
     specialty:   'Long Context',
     speed:       'Deep',
     color:       '#6366f1',
-    system:      'You are xAI Max, powered by Moonshot Kimi K1.5. You excel at long-context understanding, complex multi-hop reasoning, and extended coding tasks. Handle very long documents, codebases, and intricate problem sequences with ease.'
+    system:      'You are xAI Max, powered by Moonshot Kimi K1.5. You excel at long-context understanding, complex multi-hop reasoning, and extended coding tasks. Handle very long documents, codebases, and intricate problem sequences with ease. Always respond in English unless the user specifically requests another language.',
+    development: true
   },
   {
     id:          'llama-vision',
@@ -206,7 +217,8 @@ const AGENTS = [
     specialty:   'Vision + Language',
     speed:       'Deep',
     color:       '#0064e0',
-    system:      'You are xAI Max Vision, powered by Meta Llama 3.2 90B Vision. You can understand and analyze images, charts, screenshots, diagrams, and visual content. Provide detailed, accurate descriptions and insights about what you see.'
+    system:      'You are xAI Max Vision, powered by Meta Llama 3.2 90B Vision. You can understand and analyze images, charts, screenshots, diagrams, and visual content. Provide detailed, accurate descriptions and insights about what you see. Always respond in English unless the user specifically requests another language.',
+    development: false
   }
 ];
 
@@ -219,6 +231,20 @@ const AUTO_AGENT = {
   speed: 'Adaptive',
   color: '#76b900',
 };
+
+// ─── Working agents (confirmed available on NVIDIA NIM) ──────────────────────
+// Only these agents are confirmed working. Others are under development.
+const WORKING_AGENT_IDS = new Set([
+  'nemotron-super',   // nvidia/nemotron-3-super-120b-a12b - confirmed working
+  'mistral-nemo',     // mistralai/mistral-nemotron - confirmed working
+  'llama-vision',     // meta/llama-3.2-90b-vision-instruct - vision model
+]);
+
+function isAgentWorking(agentId) {
+  return WORKING_AGENT_IDS.has(agentId);
+}
+
+// ─── Middleware ───────────────────────────────────────────────────────────────
 
 function getRequestText(messages) {
   const lastUser = [...(Array.isArray(messages) ? messages : [])]
@@ -240,22 +266,25 @@ function selectAutoAgent(messages) {
     message.content.some(part => part?.type === 'image_url')
   );
 
+  // Only select from working agents
+  const workingAgents = AGENTS.filter(a => !a.development);
+
   if (hasImage || /\b(image|photo|screenshot|diagram|chart|visual|pdf)\b/.test(text)) {
-    return AGENTS.find(agent => agent.id === 'llama-vision') || AGENTS[AGENTS.length - 1];
+    return workingAgents.find(agent => agent.id === 'llama-vision') || workingAgents[workingAgents.length - 1];
   }
   if (/\b(code|coding|program|debug|javascript|typescript|python|api|sql|algorithm|software)\b/.test(text)) {
-    return AGENTS.find(agent => agent.id === 'mistral-nemo') || AGENTS[7];
+    return workingAgents.find(agent => agent.id === 'mistral-nemo') || workingAgents[0];
   }
   if (/\b(math|mathematics|equation|calculate|proof|logic|reason)\b/.test(text)) {
-    return AGENTS.find(agent => agent.id === 'nemotron-super') || AGENTS[1];
+    return workingAgents.find(agent => agent.id === 'nemotron-super') || workingAgents[0];
   }
   if (/\b(write|rewrite|story|creative|email|essay|translate|summarize)\b/.test(text)) {
-    return AGENTS.find(agent => agent.id === 'mistral-nemo') || AGENTS[7];
+    return workingAgents.find(agent => agent.id === 'mistral-nemo') || workingAgents[0];
   }
   if (text.length < 120 || /\b(quick|fast|simple|brief)\b/.test(text)) {
-    return AGENTS.find(agent => agent.id === 'mistral-nemo') || AGENTS[7];
+    return workingAgents.find(agent => agent.id === 'mistral-nemo') || workingAgents[0];
   }
-  return AGENTS.find(agent => agent.id === 'mistral-nemo') || AGENTS[7];
+  return workingAgents.find(agent => agent.id === 'mistral-nemo') || workingAgents[0];
 }
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
@@ -305,8 +334,10 @@ function sanitizeMessages(messages) {
 
 // ─── GET /api/models ──────────────────────────────────────────────────────────
 app.get('/api/models', (_req, res) => {
-  res.json({ agents: [AUTO_AGENT, ...AGENTS].map(({ id, name, emoji, model, description, specialty, speed, color }) =>
-    ({ id, name, emoji, model, description, specialty, speed, color })
+  // Only return working agents (non-development) plus Auto
+  const workingAgents = AGENTS.filter(a => !a.development);
+  res.json({ agents: [AUTO_AGENT, ...workingAgents].map(({ id, name, emoji, model, description, specialty, speed, color, development }) =>
+    ({ id, name, emoji, model, description, specialty, speed, color, development: !!development })
   )});
 });
 
