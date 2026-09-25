@@ -1009,6 +1009,27 @@ body {
   background: rgba(52,211,153,0.1);
   border-radius: 100px;
 }
+.agent-chip-dev {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--accent-warm);
+  padding: 1px 5px;
+  background: rgba(244,114,182,0.15);
+  border-radius: 100px;
+}
+.agent-chip.dev {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.agent-chip.dev:hover {
+  transform: none;
+  box-shadow: none;
+  border-color: var(--glass-border);
+  color: var(--text-secondary);
+}
+.agent-chip.dev::before { opacity: 0; }
 
 .agent-more-btn {
   display: flex;
@@ -1475,6 +1496,18 @@ body {
   border-radius: 100px;
   align-self: flex-start;
 }
+.agent-card.dev {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.agent-card.dev:hover {
+  transform: none;
+  box-shadow: none;
+  border-color: var(--glass-border);
+  background: var(--glass-bg);
+}
+.agent-card.dev::before { opacity: 0; }
 
 /* ── 16. TOAST NOTIFICATIONS ─────────────────────────────────────────────── */
 .toast-container {
