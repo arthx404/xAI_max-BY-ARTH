@@ -296,7 +296,7 @@ app.use(helmet({
       styleSrc:    ["'self'", "'unsafe-inline'", 'fonts.googleapis.com', 'cdnjs.cloudflare.com'],
       fontSrc:     ["'self'", 'fonts.gstatic.com'],
       imgSrc:      ["'self'", 'data:', 'blob:'],
-      connectSrc:  ["'self'"],
+      connectSrc:  ["'self'", 'https://nrtkdiwvrfqmvwwrmlvg.supabase.co'],
     }
   }
 }));
