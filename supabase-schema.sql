@@ -1,9 +1,11 @@
--- xAI Max persistent conversation storage
+-- Veylora persistent conversation storage
 -- Run this in Supabase Dashboard -> SQL Editor.
 
 create table if not exists public.conversations (
   id uuid primary key,
   user_id uuid not null references auth.users(id) on delete cascade,
+  name text,
+  email text,
   title text not null default 'Conversation',
   agent_id text,
   agent_emoji text,
@@ -12,6 +14,15 @@ create table if not exists public.conversations (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.conversations add column if not exists name text;
+alter table public.conversations add column if not exists email text;
+update public.conversations as c
+set name = coalesce(u.raw_user_meta_data->>'full_name', u.raw_user_meta_data->>'name'),
+    email = u.email
+from auth.users as u
+where c.user_id = u.id
+  and (c.name is null or c.email is null);
 
 alter table public.conversations enable row level security;
 
@@ -42,6 +53,8 @@ create index if not exists conversations_user_updated_idx
 create table if not exists public.question_logs (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
+  name text,
+  email text,
   conversation_id uuid references public.conversations(id) on delete set null,
   question text not null,
   answer text not null,
@@ -50,7 +63,24 @@ create table if not exists public.question_logs (
   created_at timestamptz not null default now()
 );
 
+alter table public.question_logs add column if not exists name text;
+alter table public.question_logs add column if not exists email text;
+update public.question_logs as q
+set name = coalesce(u.raw_user_meta_data->>'full_name', u.raw_user_meta_data->>'name'),
+    email = u.email
+from auth.users as u
+where q.user_id = u.id
+  and (q.name is null or q.email is null);
+
 alter table public.question_logs enable row level security;
+
+create table if not exists public.app_settings (
+  id text primary key,
+  value jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.app_settings enable row level security;
 
 drop policy if exists "Users can view their question logs" on public.question_logs;
 create policy "Users can view their question logs"

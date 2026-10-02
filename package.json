@@ -1,5 +1,5 @@
 {
-  "name": "xai-max",
+  "name": "veylora",
   "version": "1.0.0",
   "description": "Premium multi-agent AI assistant powered by NVIDIA NIM — Apple Liquid Glass UI",
   "main": "server.js",
@@ -8,13 +8,19 @@
     "dev": "nodemon server.js"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.117.2",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "express-rate-limit": "^7.4.1",
+    "groq-sdk": "^1.6.0",
     "helmet": "^7.1.0",
+    "mammoth": "^1.13.0",
     "morgan": "^1.10.0",
-    "openai": "^4.52.7"
+    "multer": "^2.4.0",
+    "openai": "^4.52.7",
+    "pdf-parse": "^2.4.5",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "nodemon": "^3.1.4"
@@ -22,7 +28,15 @@
   "engines": {
     "node": ">=18.0.0"
   },
-  "keywords": ["ai", "nvidia", "nim", "grok", "llama", "deepseek", "chat"],
-  "author": "xAI Max",
+  "keywords": [
+    "ai",
+    "nvidia",
+    "nim",
+    "grok",
+    "llama",
+    "deepseek",
+    "chat"
+  ],
+  "author": "Veylora",
   "license": "MIT"
 }

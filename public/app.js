@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════════
-//  xAI Max — app.js
+//  Veylora — app.js
 //  AI Logic: Streaming, Conversation Management, Agent State
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -49,12 +49,13 @@ async function init() {
   loadConversations();
   const configPromise = checkServerConfig();
   const agentsPromise = fetchAgents();
+  const providerPromise = checkProviderHealth();
   await initSupabase();
-  await Promise.all([configPromise, agentsPromise]);
+  await Promise.all([configPromise, agentsPromise, providerPromise]);
   startNewConversation(false);
   setupKeyboardShortcuts();
   applyAuroraLevel(State.settings.auroraLevel);
-  console.log('[xAI Max] Ready ✦');
+  console.log('[Veylora] Ready ✦');
 }
 
 async function loadCloudConversations() {
@@ -65,7 +66,7 @@ async function loadCloudConversations() {
     .order('updated_at', { ascending: false })
     .limit(100);
   if (error) {
-    console.error('[xAI Max] Cloud history load failed:', error);
+    console.error('[Veylora] Cloud history load failed:', error);
     UI.showToast('Cloud history could not be loaded.', 'error');
     return;
   }
@@ -91,9 +92,13 @@ async function loadCloudConversations() {
 
 async function saveConversationToCloud(conversation) {
   if (!State.supabase || !State.user || !conversation) return;
+  const name = State.user.user_metadata?.full_name || State.user.user_metadata?.name || null;
+  const email = State.user.email || null;
   const { error } = await State.supabase.from('conversations').upsert({
     id: conversation.id,
     user_id: State.user.id,
+    name,
+    email,
     title: conversation.title,
     agent_id: conversation.agentId || null,
     agent_emoji: conversation.agentEmoji || null,
@@ -102,7 +107,7 @@ async function saveConversationToCloud(conversation) {
     updated_at: new Date(conversation.updated || Date.now()).toISOString(),
   });
   if (error) {
-    console.error('[xAI Max] Cloud history save failed:', error);
+    console.error('[Veylora] Cloud history save failed:', error);
     UI.showToast('Cloud history could not be saved. Check your Supabase policies.', 'error');
   }
 }
@@ -125,8 +130,12 @@ async function loadSignedInHistory(guestConversations = []) {
 
 async function saveQuestionLogToCloud(question, answer, agent) {
   if (!State.supabase || !State.user || !question || !answer) return;
+  const name = State.user.user_metadata?.full_name || State.user.user_metadata?.name || null;
+  const email = State.user.email || null;
   const { error } = await State.supabase.from('question_logs').insert({
     user_id: State.user.id,
+    name,
+    email,
     conversation_id: State.activeConvId,
     question,
     answer,
@@ -134,7 +143,7 @@ async function saveQuestionLogToCloud(question, answer, agent) {
     model: agent?.model || null,
   });
   if (error) {
-    console.error('[xAI Max] Question log save failed:', error);
+    console.error('[Veylora] Question log save failed:', error);
     UI.showToast('Answer was not saved to Supabase. Check your account and policies.', 'error');
   }
 }
@@ -200,14 +209,14 @@ async function initSupabase() {
         });
         if (error) throw error;
       } catch (error) {
-        console.error('[xAI Max] Google sign-in failed:', error);
+        console.error('[Veylora] Google sign-in failed:', error);
         UI.showToast(`❌ Google sign-in failed: ${error.message}`, 'error');
       }
     };
     authButton?.addEventListener('click', signInOrOut);
     $('account-menu-action')?.addEventListener('click', signInOrOut);
   } catch (error) {
-    console.error('[xAI Max] Supabase initialization failed:', error);
+    console.error('[Veylora] Supabase initialization failed:', error);
     if (authButton) authButton.style.display = 'none';
   } finally {
     State.authReady = true;
@@ -216,13 +225,24 @@ async function initSupabase() {
 
 function updateAuthState(user) {
   State.user = user;
+  const welcomeTitle = $('welcome-title');
+  if (welcomeTitle) {
+    const hour = new Date().getHours();
+    const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+    const metadata = user?.user_metadata || {};
+    const emailName = user?.email?.split('@')[0]?.replace(/[._-]+/g, ' ').trim();
+    const displayName = metadata.full_name || metadata.name || metadata.given_name || emailName || '';
+    welcomeTitle.textContent = displayName ? `${greeting}, ${displayName}` : 'How can I help you today?';
+    welcomeTitle.setAttribute('aria-label', displayName ? `${greeting}, ${displayName}` : 'How can I help you today?');
+  }
   const button = $('btn-auth');
   const label = $('auth-label');
-  if (!button) return;
-  button.style.display = '';
+  if (button) {
+    button.style.display = user ? 'none' : '';
+  }
   if (label) label.textContent = user ? 'Sign out' : 'Sign in with Google';
-  button.setAttribute('aria-label', user ? 'Sign out of xAI Max' : 'Sign in with Google');
-  button.title = user ? `Signed in as ${user.email || 'your Google account'}` : 'Sign in with Google';
+  if (button) button.setAttribute('aria-label', user ? 'Sign out of Veylora' : 'Sign in with Google');
+  if (button) button.title = user ? `Signed in as ${user.email || 'your Google account'}` : 'Sign in with Google';
   const avatarUrl = user?.user_metadata?.avatar_url || user?.user_metadata?.picture || '';
   const displayName = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email || 'Google account';
   const avatarElements = [$('account-avatar'), $('account-menu-avatar')].filter(Boolean);
@@ -248,8 +268,29 @@ async function checkServerConfig() {
     const res = await fetch(`${API_BASE}/api/health`);
     const data = await res.json();
     State.hasServerKey = !!data.hasServerKey;
+    const announcement = document.getElementById('announcement-bar');
+    if (announcement && data.announcement) {
+      announcement.textContent = data.announcement;
+      announcement.hidden = false;
+    }
   } catch (err) {
-    console.log('[xAI Max] Health check failed:', err);
+    console.log('[Veylora] Health check failed:', err);
+  }
+}
+
+async function checkProviderHealth() {
+  try {
+    const response = await fetch(`${API_BASE}/api/providers`);
+    const data = await response.json();
+    const configured = (data.providers || []).filter(provider => provider.configured).length;
+    const failed = (data.providers || []).filter(provider => provider.ok === false).length;
+    const status = $('status-dot');
+    if (status) {
+      status.title = `${configured} providers configured${failed ? `, ${failed} failing` : ''}`;
+      status.classList.toggle('error', failed > 0);
+    }
+  } catch (error) {
+    console.warn('[Veylora] Provider health unavailable:', error);
   }
 }
 
@@ -258,7 +299,7 @@ async function checkServerConfig() {
 // ─────────────────────────────────────────────────────────────────────────
 async function fetchAgents() {
   try {
-    const res    = await fetch(`${API_BASE}/api/models`);
+    const res    = await fetch(`${API_BASE}/api/models?live=1`);
     const data   = await res.json();
     State.agents = data.agents || [];
 
@@ -269,7 +310,7 @@ async function fetchAgents() {
     UI.renderAgentStrip();
     UI.updateTopbar();
   } catch (err) {
-    console.error('[xAI Max] Failed to fetch agents:', err);
+    console.error('[Veylora] Failed to fetch agents:', err);
     UI.showToast('⚠️ Could not connect to backend. Is the server running?', 'error');
   }
 }
@@ -353,6 +394,18 @@ async function persistCurrentConversation() {
   UI.renderHistoryList();
 }
 
+async function renameConversation(id) {
+  const conversation = State.conversations.find(item => item.id === id);
+  if (!conversation) return;
+  const title = window.prompt('Conversation name', conversation.title);
+  if (!title?.trim()) return;
+  conversation.title = title.trim().slice(0, 120);
+  conversation.updated = Date.now();
+  saveConversations();
+  await saveConversationToCloud(conversation);
+  UI.renderHistoryList();
+}
+
 function loadConversation(id) {
   const conv = State.conversations.find(c => c.id === id);
   if (!conv) return;
@@ -391,7 +444,7 @@ function deleteConversation(id) {
     State.supabase.from('conversations').delete().eq('id', id).eq('user_id', State.user.id)
       .then(({ error }) => {
         if (error) {
-          console.error('[xAI Max] Cloud history delete failed:', error);
+          console.error('[Veylora] Cloud history delete failed:', error);
           UI.showToast('Cloud conversation could not be deleted.', 'error');
         }
       });
@@ -405,7 +458,7 @@ function clearAllHistory() {
     State.supabase.from('conversations').delete().eq('user_id', State.user.id)
       .then(({ error }) => {
         if (error) {
-          console.error('[xAI Max] Cloud history clear failed:', error);
+          console.error('[Veylora] Cloud history clear failed:', error);
           UI.showToast('Cloud history could not be cleared.', 'error');
         }
       });
@@ -438,7 +491,8 @@ async function sendMessage(content) {
   if (!content || State.streaming) return;
 
   // Check for API key
-  if (!State.hasServerKey) {
+  const keylessAgent = ['pollinations'].includes(State.activeAgent?.provider);
+  if (!State.hasServerKey && !keylessAgent) {
     // Try server .env key (health check)
     UI.openSettings();
     UI.showToast('⚠️ NVIDIA access is not configured on the server.', 'error');
@@ -454,16 +508,17 @@ async function sendMessage(content) {
     const textAttachments = attachments.filter(a => !a.isImage);
     const imageAttachments = attachments.filter(a => a.isImage);
     
-    // Append text files to the prompt text
+    // Prepend text files to the prompt text
     if (textAttachments.length > 0) {
-      finalContent += '\n\n' + textAttachments.map(a => `[Attached File: ${a.name}]\n\`\`\`\n${a.data}\n\`\`\``).join('\n\n');
+      const prepends = textAttachments.map(a => `[Attached File: ${a.name}]\n\nFile Contents:\n${a.content}\n\n`).join('');
+      finalContent = prepends + finalContent;
     }
     
     // Format payload for vision models if there are images
     if (imageAttachments.length > 0) {
       messagePayload = [
         { type: 'text', text: finalContent },
-        ...imageAttachments.map(img => ({ type: 'image_url', image_url: { url: img.data } }))
+        ...imageAttachments.map(img => ({ type: 'image_url', image_url: { url: img.content } }))
       ];
     } else {
       messagePayload = finalContent;
@@ -549,7 +604,7 @@ async function sendMessage(content) {
         if (event.type === 'error') streamEndedWithError = true;
         handleStreamEvent(event, bubble, (c) => { assistantContent += c; });
       } catch (error) {
-        console.error('[xAI Max] Invalid SSE event:', error);
+          console.error('[Veylora] Invalid SSE event:', error);
       }
     };
 
@@ -585,7 +640,7 @@ async function sendMessage(content) {
       }
     } else {
       UI.showToast(`❌ ${err.message}`, 'error');
-      console.error('[xAI Max] Stream error:', err);
+      console.error('[Veylora] Stream error:', err);
     }
   } finally {
     if (requestTimeout) clearTimeout(requestTimeout);
@@ -605,7 +660,34 @@ async function sendMessage(content) {
       const question = typeof userMessage?.content === 'string'
         ? userMessage.content
         : JSON.stringify(userMessage?.content || '');
-      await saveQuestionLogToCloud(question, assistantContent, State.resolvedAgent || State.activeAgent);
+      const currentAgent = State.resolvedAgent || State.activeAgent;
+      await saveQuestionLogToCloud(question, assistantContent, currentAgent);
+      
+      // Log to backend API
+      if (State.user && State.supabase) {
+        try {
+          const { data: sessionData } = await State.supabase.auth.getSession();
+          const token = sessionData?.session?.access_token;
+          if (token) {
+            await fetch('/api/log-qa', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                question,
+                answer: assistantContent,
+                agentId: currentAgent?.id,
+                model: currentAgent?.model,
+                conversationId: State.activeConvId
+              })
+            });
+          }
+        } catch(e) {
+          console.error('[Veylora] API QA Log failed:', e);
+        }
+      }
     } else {
       // Clean up empty bubble if stream failed or returned no text
       bubble?.closest('.message')?.remove();
@@ -621,6 +703,13 @@ function handleStreamEvent(event, bubble, onDelta) {
     case 'delta':
       onDelta(event.content);
       UI.streamDelta(bubble, event.content);
+      break;
+
+    case 'image':
+      const fallback = event.fallbackUrl ? ` data-fallback="${event.fallbackUrl}"` : '';
+      const imgHtml = `\n\n<img src="${event.url}" alt="Generated Image" class="generated-image"${fallback} onerror="UI.recoverImage(this)" />\n\n`;
+      onDelta(imgHtml);
+      UI.streamDelta(bubble, imgHtml);
       break;
 
     case 'done':
@@ -686,14 +775,19 @@ function exportChat() {
     .map(m => `[${m.role.toUpperCase()}]\n${m.content}`)
     .join('\n\n---\n\n');
 
-  const blob = new Blob([text], { type: 'text/plain' });
+  const markdown = `# ${State.conversations.find(item => item.id === State.activeConvId)?.title || 'Veylora Conversation'}\n\n${text}`;
+  const blob = new Blob([markdown], { type: 'text/markdown' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href     = url;
-  a.download = `xAI-Max-${new Date().toISOString().slice(0,10)}.txt`;
+  a.download = `Veylora-${new Date().toISOString().slice(0,10)}.md`;
   a.click();
   URL.revokeObjectURL(url);
   UI.showToast('💾 Chat exported');
+}
+
+function exportPdf() {
+  window.print();
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -719,7 +813,8 @@ function applyAuroraLevel(level) {
 // ── Expose globally for UI module ──────────────────────────────────────────
 window.App = {
   State, init, selectAgent, sendMessage, stopGeneration,
-  startNewConversation, loadConversation, deleteConversation,
+  startNewConversation, loadConversation, deleteConversation, renameConversation,
+  exportPdf,
   clearAllHistory, validateApiKey, exportChat, saveSettings,
   loadSettings, applyAuroraLevel,
 };

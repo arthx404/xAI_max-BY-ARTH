@@ -1,118 +1,92 @@
-# xAI Max — Multi-Agent AI Platform
+# Veylora — Multi-Agent Personal AI Assistant
 
-Premium multi-agent AI chat powered by NVIDIA NIM, with automatic model routing, streaming responses, Google sign-in, and account-scoped conversation history.
+A free, open-source, multi-agent AI assistant built with Streamlit.
 
----
+## 🤖 Agents
 
-## Features
+| Agent | Label | Powered By | Purpose |
+|-------|-------|------------|---------|
+| **Code** | 🧑‍💻 Claude-like | Qwen2.5-Coder-32B | Programming, debugging, code review |
+| **Fast Mode** | ⚡ ChatGPT-like | Mistral-Small-24B | Quick answers, general chat |
+| **Image Gen** | 🎨 Gemini-like | FLUX.1-schnell | Image generation from text |
 
-- NVIDIA NIM streaming proxy with server-side API-key protection
-- Auto agent that routes requests to a suitable model
-- Multiple NVIDIA catalog agents with fallback handling
-- Vanilla HTML/CSS/JavaScript liquid-glass interface
-- Google authentication through Supabase
-- Account-scoped cloud conversations and question/answer logs
-- Text and image attachments
-- Local guest history when the user is signed out
+All models run via **HuggingFace's free Inference API** — no paid subscriptions needed.
 
-## Local development
+## 📎 File Support
 
-### 1. Install Node.js dependencies
+Upload and analyze any of these file types:
+- **Documents:** PDF, DOCX, XLSX, PPTX, CSV, TXT, MD
+- **Code:** Python, JavaScript, TypeScript, Java, C/C++, Go, Rust, PHP, Ruby, Swift, Kotlin, SQL, HTML, CSS, and 30+ more
+- **Images:** PNG, JPG, GIF, BMP, WebP
+- **Config:** JSON, YAML, TOML, XML, INI, ENV
+
+## ☁️ Supabase Integration
+
+Optional cloud backend with:
+- **Auth:** User login / signup / logout
+- **Database:** Chat history synced across devices
+- **Storage:** File uploads stored in the cloud
+
+## 🚀 Quick Setup
+
+### 1. Install dependencies
 ```bash
-npm install
+pip install -r requirements.txt
 ```
 
-### 2. Configure environment variables
+### 2. Get a free HuggingFace token
+Go to https://huggingface.co/settings/tokens and create a free token.
+
+### 3. Configure secrets
+Edit `.streamlit/secrets.toml`:
+```toml
+HF_TOKEN = "hf_your_token_here"
+
+# Optional — for cloud features:
+SUPABASE_URL = "https://your-project.supabase.co"
+SUPABASE_KEY = "your_anon_key"
+```
+
+### 4. (Optional) Set up Supabase
+1. Create a free project at https://supabase.com
+2. Run the SQL from `supabase_client/database.py` in the SQL Editor
+3. Create a storage bucket named `user-files`
+
+### 5. Run the app
 ```bash
-copy .env.example .env
+streamlit run app.py
 ```
 
-Set `NVIDIA_API_KEY` in `.env`. Optionally set `SUPABASE_URL` and
-`SUPABASE_ANON_KEY` to enable Google sign-in and cloud history.
-
-### 3. Run the server
-```bash
-npm start
-# Open http://localhost:3000
-```
-
-## Production deployment
-
-Deploy this as a Node.js web service, not as static files only.
-
-1. Use Node.js 18 or newer.
-2. Set the service start command to `npm start`.
-3. Configure these environment variables in the hosting provider:
-
-```env
-NVIDIA_API_KEY=your-new-server-only-key
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=your-public-supabase-key
-CORS_ORIGIN=https://your-domain.example
-PORT=provided-by-host
-RATE_LIMIT=100
-```
-
-Never commit `.env`, NVIDIA keys, Supabase service-role keys, OAuth secrets, or
-files from the local credentials folder. Rotate any key that has been exposed.
-
-After deployment, add the production URL to Supabase Authentication URL
-Configuration and to the Google OAuth authorized origins. The redirect callback
-remains the Supabase callback URL:
-
-```text
-https://YOUR_PROJECT_REF.supabase.co/auth/v1/callback
-```
-
-## Supabase setup
-
-Run [supabase-schema.sql](./supabase-schema.sql) in the Supabase SQL editor once.
-It creates the conversation and question-log tables with row-level security.
-
----
-
-## Agents
-
-The catalog is served by `/api/models`. Select **Auto** to route by request
-type. The server falls back to the verified fast model when an NVIDIA model is
-temporarily unavailable.
-
-## Keyboard shortcuts
-
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl/Cmd + K` | New conversation |
-| `Ctrl/Cmd + ,` | Open settings |
-| `Ctrl/Cmd + E` | Export chat |
-| `Enter` | Send message |
-| `Shift + Enter` | New line |
-| `Esc` | Close modals |
-
----
-
-## 📁 File Structure
+## 📁 Project Structure
 
 ```
-xAI Max/
-├── server.js           # Express backend — NVIDIA NIM proxy + SSE
-├── package.json        # Node dependencies
-├── .env.example        # Environment template (copy to .env)
-├── .gitignore
-├── streamlit_app.py    # 🐍 Streamlit version (free hosting)
-├── requirements.txt    # Python deps for Streamlit
-├── README.md
-└── public/
-    ├── index.html      # App shell
-    ├── style.css       # Apple Liquid Glass design system
-    ├── app.js          # AI core logic + streaming
-    └── ui.js           # UI components + animations
+Veylora/
+├── app.py                    # Main Streamlit application
+├── requirements.txt          # Python dependencies
+├── .streamlit/
+│   └── secrets.toml          # API keys (never commit this!)
+├── agents/
+│   ├── __init__.py
+│   ├── code_agent.py         # 🧑‍💻 Code agent (Qwen2.5-Coder)
+│   ├── fast_agent.py         # ⚡ Fast mode agent (Mistral)
+│   └── image_agent.py        # 🎨 Image generation agent (FLUX)
+├── supabase_client/
+│   ├── __init__.py
+│   ├── auth.py               # Authentication
+│   ├── database.py           # Chat persistence
+│   └── storage.py            # File storage
+└── utils/
+    ├── __init__.py
+    └── file_reader.py         # Universal file reader
 ```
 
----
+## 🌐 Deploy Free on Streamlit Cloud
 
-## Security
+1. Push this repo to GitHub
+2. Go to https://share.streamlit.io
+3. Connect your repo and set secrets in the dashboard
+4. Your app runs 24/7 for free — no need to keep your PC on!
 
-- NVIDIA API keys remain on the server and are never sent to the browser.
-- Rate limiting and Helmet security headers are enabled.
-- Supabase row-level security isolates account data.
-- Rotate credentials immediately if they are accidentally exposed.
+## License
+
+MIT

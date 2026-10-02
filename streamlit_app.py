@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════════════════════
-#  xAI Max — Streamlit App
+#  Veylora — Streamlit App
 #  Free deployment at: username.streamlit.app
 #  Multi-agent AI powered by NVIDIA NIM
 # ═══════════════════════════════════════════════════════════════════════════
@@ -9,7 +9,7 @@ from openai import OpenAI
 
 # ─── Page Config ─────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title  = "xAI Max — Multi-Agent AI",
+    page_title  = "Veylora — Multi-Agent AI",
     page_icon   = "✦",
     layout      = "wide",
     initial_sidebar_state = "expanded",
@@ -21,67 +21,67 @@ AGENTS = {
         "model":       "nvidia/llama-3.1-nemotron-ultra-253b-v1",
         "description": "NVIDIA's frontier model — deepest reasoning, agentic tasks",
         "speed":       "🟡 Deep",
-        "system":      "You are xAI Max Ultra, the world's most advanced AI assistant powered by NVIDIA Nemotron Ultra 253B. You excel at multi-step reasoning, complex analysis, scientific thinking, and agentic task execution. Always think step-by-step, be precise, and provide exhaustively detailed answers.",
+        "system":      "You are Veylora Ultra, the world's most advanced AI assistant powered by NVIDIA Nemotron Ultra 253B. You excel at multi-step reasoning, complex analysis, scientific thinking, and agentic task execution. Always think step-by-step, be precise, and provide exhaustively detailed answers.",
     },
     "🧠 Nemotron Super 49B": {
         "model":       "nvidia/llama-3.3-nemotron-super-49b-v1",
         "description": "NVIDIA's 49B MoE — agentic workflows & tool use",
         "speed":       "🟢 Fast",
-        "system":      "You are xAI Max Super, powered by NVIDIA Nemotron Super 49B. You are highly optimized for agentic workflows, multi-turn reasoning, and efficient task execution. Always decompose complex tasks into clear steps.",
+        "system":      "You are Veylora Super, powered by NVIDIA Nemotron Super 49B. You are highly optimized for agentic workflows, multi-turn reasoning, and efficient task execution. Always decompose complex tasks into clear steps.",
     },
     "🦙 Llama 3.1 405B": {
         "model":       "meta/llama-3.1-405b-instruct",
         "description": "Meta's largest open model — vast knowledge across all domains",
         "speed":       "🟡 Deep",
-        "system":      "You are xAI Max, powered by Meta's Llama 3.1 405B — the largest open-weight AI model ever created. Be thorough, insightful, and always cite your reasoning.",
+        "system":      "You are Veylora, powered by Meta's Llama 3.1 405B — the largest open-weight AI model ever created. Be thorough, insightful, and always cite your reasoning.",
     },
     "🔥 Llama 3.3 70B": {
         "model":       "nvidia/llama-3.1-nemotron-70b-instruct",
         "description": "The perfect daily driver — fast, smart, versatile",
         "speed":       "🟢 Fast",
-        "system":      "You are xAI Max, powered by NVIDIA Nemotron 70B. You are fast, smart, and versatile. Excel at everyday tasks, writing, analysis, and coding.",
+        "system":      "You are Veylora, powered by NVIDIA Nemotron 70B. You are fast, smart, and versatile. Excel at everyday tasks, writing, analysis, and coding.",
     },
     "🔍 DeepSeek R1 (Reasoning)": {
         "model":       "deepseek-ai/deepseek-r1",
         "description": "Chain-of-thought specialist — shows reasoning for math & logic",
         "speed":       "🟡 Deep",
-        "system":      "You are xAI Max Reason, powered by DeepSeek R1. Always show your full chain of thought. Reason step by step before giving your final answer. For math problems, show all work.",
+        "system":      "You are Veylora Reason, powered by DeepSeek R1. Give concise reasoning summaries and final answers. For math problems, show all work.",
     },
     "💻 DeepSeek V3 (Coding)": {
         "model":       "deepseek-ai/deepseek-v3-0324",
         "description": "Elite coding & technical reasoning",
         "speed":       "🟢 Fast",
-        "system":      "You are xAI Max Code, powered by DeepSeek V3. You are an elite software engineer. Write clean, efficient, well-commented code. Follow best practices and explain technical concepts clearly.",
+        "system":      "You are Veylora Code, powered by DeepSeek V3. You are an elite software engineer. Write clean, efficient, well-commented code. Follow best practices and explain technical concepts clearly.",
     },
     "🌊 Mistral Large": {
         "model":       "mistralai/mistral-large-2-instruct",
         "description": "Multilingual, great for writing & analysis",
         "speed":       "🟢 Fast",
-        "system":      "You are xAI Max, powered by Mistral Large. You excel at writing, content creation, multilingual tasks, summarization, and nuanced analysis.",
+        "system":      "You are Veylora, powered by Mistral Large. You excel at writing, content creation, multilingual tasks, summarization, and nuanced analysis.",
     },
     "⚡ Mistral NeMo 12B": {
         "model":       "nv-mistralai/mistral-nemo-12b-instruct",
         "description": "Ultra-fast lightweight model by Mistral × NVIDIA",
         "speed":       "🔵 Lightning",
-        "system":      "You are xAI Max Fast, powered by Mistral NeMo 12B. Prioritize speed and clarity. Give direct, accurate answers without unnecessary preamble.",
+        "system":      "You are Veylora Fast, powered by Mistral NeMo 12B. Prioritize speed and clarity. Give direct, accurate answers without unnecessary preamble.",
     },
     "🌸 Gemma 3 27B": {
         "model":       "google/gemma-3-27b-it",
         "description": "Google's open model — creative & conversational",
         "speed":       "🟢 Fast",
-        "system":      "You are xAI Max, powered by Google Gemma 3 27B. You are warm, thoughtful, and creative. Excel at conversations, creative writing, and explaining ideas engagingly.",
+        "system":      "You are Veylora, powered by Google Gemma 3 27B. You are warm, thoughtful, and creative. Excel at conversations, creative writing, and explaining ideas engagingly.",
     },
     "🔷 Microsoft Phi-4": {
         "model":       "microsoft/phi-4",
         "description": "Punches above its weight — compact yet brilliant",
         "speed":       "🔵 Lightning",
-        "system":      "You are xAI Max, powered by Microsoft Phi-4. You are compact yet extraordinarily capable at reasoning. Give precise, well-reasoned answers.",
+        "system":      "You are Veylora, powered by Microsoft Phi-4. You are compact yet extraordinarily capable at reasoning. Give precise, well-reasoned answers.",
     },
     "🌙 Kimi K1.5 (Long Context)": {
         "model":       "moonshotai/kimi-k1.5-thinking",
         "description": "Long-context expert — handles massive documents & codebases",
         "speed":       "🟡 Deep",
-        "system":      "You are xAI Max, powered by Moonshot Kimi K1.5. You excel at long-context understanding and complex multi-hop reasoning. Handle very long documents with ease.",
+        "system":      "You are Veylora, powered by Moonshot Kimi K1.5. You excel at long-context understanding and complex multi-hop reasoning. Handle very long documents with ease.",
     },
 }
 
@@ -349,7 +349,7 @@ if "active_agent"  not in st.session_state: st.session_state.active_agent  = "�
 
 # ─── Sidebar ──────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown('<div class="sidebar-brand"><span class="sidebar-logo">✦</span> xAI Max</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-brand"><span class="sidebar-logo">✦</span> Veylora</div>', unsafe_allow_html=True)
 
     # API Key input — also supports Streamlit secrets
     api_key = st.text_input(
@@ -419,7 +419,7 @@ with st.sidebar:
             st.download_button(
                 "Download",
                 data      = text,
-                file_name = "xai-max-chat.txt",
+                file_name = "veylora-chat.txt",
                 mime      = "text/plain",
                 use_container_width = True,
             )
@@ -430,7 +430,7 @@ if not st.session_state.messages:
     st.markdown("""
     <div class="xai-hero">
       <span class="xai-logo">✦</span>
-      <div class="xai-title">xAI Max</div>
+      <div class="xai-title">Veylora</div>
       <div class="xai-subtitle">
         The world's most powerful multi-agent AI platform.<br>
         12 frontier models. One interface.

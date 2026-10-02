@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>xAI Max — Multi-Agent AI Platform</title>
+  <title>Veylora — Multi-Agent AI Platform</title>
   <meta name="description" content="The world's most powerful multi-agent AI assistant. 12+ NVIDIA NIM frontier models in a stunning Apple Liquid Glass interface." />
   <meta name="theme-color" content="#06070a" />
 
@@ -42,7 +42,7 @@
       <div class="sidebar-header">
         <div class="brand">
           <span class="brand-icon">✦</span>
-          <span class="brand-name">xAI Max</span>
+          <span class="brand-name">Veylora</span>
         </div>
         <button class="icon-btn" id="btn-sidebar-close" aria-label="Close sidebar" title="Close">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
@@ -55,6 +55,7 @@
       </button>
 
       <div class="sidebar-section-label">Recent</div>
+      <input class="history-search" id="history-search" type="search" placeholder="Search conversations" aria-label="Search conversations">
       <div class="history-list" id="history-list" role="list">
         <!-- Populated by ui.js -->
         <div class="history-empty" id="history-empty">
@@ -70,6 +71,10 @@
         <button class="sidebar-footer-btn" id="btn-export-chat">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
           Export Chat
+        </button>
+        <button class="sidebar-footer-btn" id="btn-export-pdf">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2h9l3 3v17H6z"/><path d="M9 13h6M9 17h4M15 2v4h4"/></svg>
+          Print / PDF
         </button>
         <button class="sidebar-footer-btn" id="btn-auth" type="button">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg>
@@ -126,6 +131,8 @@
         </div>
       </header>
 
+      <div class="announcement-bar" id="announcement-bar" hidden role="status"></div>
+
       <!-- Chat Feed -->
       <div class="chat-feed" id="chat-feed" role="log" aria-live="polite" aria-label="Conversation">
 
@@ -134,8 +141,8 @@
           <div class="welcome-logo">
             <div class="welcome-orb">✦</div>
           </div>
-          <h1 class="welcome-title">xAI Max</h1>
-          <p class="welcome-subtitle">The world's most powerful multi-agent AI.<br>Choose your agent. Ask anything.</p>
+          <h1 class="welcome-title" id="welcome-title">How can I help you today?</h1>
+          <p class="welcome-subtitle">Ask a question, upload a file, or choose an agent to get started.</p>
           <div class="welcome-capabilities" style="display: none;"></div>
           <div class="welcome-suggestions" id="welcome-suggestions">
             <button class="suggestion-card" data-prompt="Explain quantum entanglement in simple terms, then give me a practical example.">
@@ -182,7 +189,7 @@
             <textarea
               id="chat-input"
               class="chat-input"
-              placeholder="Message xAI Max…"
+              placeholder="Message Veylora…"
               rows="1"
               maxlength="32000"
               aria-label="Type your message"
@@ -208,7 +215,7 @@
           </div>
         </div>
 
-        <p class="disclaimer">xAI Max can make mistakes. Verify important information.</p>
+        <p class="disclaimer">Veylora can make mistakes. Verify important information.</p>
       </div>
 
     </main>
@@ -226,7 +233,7 @@
 
       <div class="modal-body">
         <div class="setting-note">
-          NVIDIA access is securely managed by the xAI Max server.
+          Provider access is securely managed by the Veylora server.
         </div>
 
         <!-- System Prompt -->

@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════════
-//  xAI Max — ui.js
+//  Veylora — ui.js
 //  UI Components: Rendering, Animations, Modals, Voice, Interactions
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -163,7 +163,18 @@ function finalizeAssistantBubble(bubble, fullContent) {
       </svg>
       Retry
     </button>
+    <button class="msg-action-btn" title="Read response aloud" onclick="UI.speakBubble(this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M19 9a5 5 0 010 6M22 6a9 9 0 010 12"/></svg>
+      Listen
+    </button>
   `;
+  if (bubble.querySelector('.generated-image')) {
+    actions.insertAdjacentHTML('afterbegin', `
+      <button class="msg-action-btn" title="Download image" onclick="UI.downloadImage(this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
+        Download image
+      </button>`);
+  }
   bubble.closest('.message').appendChild(actions);
 
   // Highlight any remaining code blocks
@@ -179,6 +190,16 @@ function appendUserMessage(content) {
   div.className = 'message user';
   div.innerHTML = `<div class="bubble">${escapeHtml(content).replace(/\n/g,'<br>')}</div>`;
   El.messages().appendChild(div);
+  const actions = document.createElement('div');
+  actions.className = 'message-actions user-message-actions';
+  actions.innerHTML = `
+    <button class="msg-action-btn" title="Copy question" onclick="UI.copyQuestion(this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+      </svg>
+      Copy
+    </button>`;
+  div.appendChild(actions);
   scrollToBottom();
 }
 
@@ -206,8 +227,16 @@ function appendAssistantMessage(content, withActions = true) {
 function showTypingIndicator() {
   const agent = window.App?.State?.activeAgent || {};
   const div = document.createElement('div');
-  div.className = 'typing-indicator';
-  div.innerHTML = `
+  const isImage = ['image-gen', 'artist'].includes(agent.id);
+  div.className = `typing-indicator${isImage ? ' image-creation-indicator' : ''}`;
+  div.innerHTML = isImage ? `
+    <div class="typing-avatar">${agent.emoji || '🎨'}</div>
+    <div class="typing-bubble image-creation-bubble">
+      <div class="creation-label">Creating image<span class="creation-ellipsis">...</span></div>
+      <div class="creation-grid" aria-hidden="true">${Array.from({ length: 24 }, (_, i) => `<span style="--i:${i}"></span>`).join('')}</div>
+      <div class="creation-progress"><span></span></div>
+    </div>
+  ` : `
     <div class="typing-avatar">${agent.emoji || '🤖'}</div>
     <div class="typing-bubble">
       <div class="typing-dot"></div>
@@ -346,6 +375,7 @@ function renderHistoryList() {
   const empty   = El.historyEmpty();
   const convs   = window.App?.State?.conversations || [];
   const activeId = window.App?.State?.activeConvId;
+  const query = (document.getElementById('history-search')?.value || '').trim().toLowerCase();
 
   // Clear all except empty placeholder
   list.querySelectorAll('.history-item').forEach(el => el.remove());
@@ -356,13 +386,15 @@ function renderHistoryList() {
   }
   empty.style.display = 'none';
 
-  convs.slice(0, 40).forEach(conv => {
+  convs.filter(conv => !query || conv.title.toLowerCase().includes(query) || conv.messages?.some(message => String(message.content || '').toLowerCase().includes(query))).slice(0, 40).forEach(conv => {
     const item = document.createElement('div');
     item.className = `history-item${conv.id === activeId ? ' active' : ''}`;
     item.role      = 'listitem';
     item.innerHTML = `
       <span class="history-item-emoji">${conv.agentEmoji || '🤖'}</span>
       <span class="history-item-title" title="${conv.title}">${conv.title}</span>
+      <button class="history-item-rename" title="Rename" aria-label="Rename conversation"
+        onclick="event.stopPropagation(); App.renameConversation('${conv.id}')">✎</button>
       <button class="history-item-delete" title="Delete" aria-label="Delete conversation"
         onclick="event.stopPropagation(); App.deleteConversation('${conv.id}')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -377,11 +409,14 @@ function renderHistoryList() {
 
 // ── Sidebar ────────────────────────────────────────────────────────────────
 function openSidebar() {
+  document.getElementById('app-shell')?.classList.remove('sidebar-collapsed');
   El.sidebar().classList.add('open');
   El.sidebarOverlay().classList.add('active');
 }
 
 function closeSidebar() {
+  const isDesktop = window.matchMedia('(min-width: 901px)').matches;
+  if (isDesktop) document.getElementById('app-shell')?.classList.add('sidebar-collapsed');
   El.sidebar().classList.remove('open');
   El.sidebarOverlay().classList.remove('active');
 }
@@ -455,15 +490,75 @@ function setStreamingState(streaming) {
 }
 
 // ── Copy helpers ───────────────────────────────────────────────────────────
+function copyText(text, successMessage) {
+  const fallback = () => {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    const copied = document.execCommand('copy');
+    textarea.remove();
+    if (!copied) throw new Error('Clipboard is unavailable');
+  };
+  return (navigator.clipboard?.writeText ? navigator.clipboard.writeText(text) : Promise.reject())
+    .catch(fallback)
+    .then(() => showToast(successMessage));
+}
+
 function copyCode(id) {
   const el = document.getElementById(id);
   if (!el) return;
-  navigator.clipboard.writeText(el.innerText).then(() => showToast('Copied!'));
+  copyText(el.innerText, 'Copied!').catch(() => showToast('Copy failed. Select the text manually.', 'error'));
 }
 
 function copyBubble(btn) {
   const bubble = btn.closest('.message').querySelector('.bubble');
-  navigator.clipboard.writeText(bubble.innerText).then(() => showToast('Copied!'));
+  copyText(bubble.innerText, 'Copied!').catch(() => showToast('Copy failed. Select the text manually.', 'error'));
+}
+
+function copyQuestion(btn) {
+  const bubble = btn.closest('.message').querySelector('.bubble');
+  copyText(bubble.innerText, 'Question copied!').catch(() => showToast('Copy failed. Select the text manually.', 'error'));
+}
+
+function speakBubble(btn) {
+  if (!('speechSynthesis' in window)) return showToast('Text-to-speech is not supported here.', 'error');
+  window.speechSynthesis.cancel();
+  const bubble = btn.closest('.message').querySelector('.bubble');
+  window.speechSynthesis.speak(new SpeechSynthesisUtterance(bubble.innerText));
+}
+
+function recoverImage(image) {
+  const fallback = image.dataset.fallback;
+  if (fallback && image.src !== fallback) {
+    image.src = fallback;
+    image.dataset.fallback = '';
+    return;
+  }
+  image.replaceWith(Object.assign(document.createElement('p'), {
+    className: 'image-error',
+    textContent: 'Image provider is temporarily unavailable. Try generating again.'
+  }));
+}
+
+async function downloadImage(btn) {
+  const image = btn.closest('.message').querySelector('.generated-image');
+  if (!image) return;
+  try {
+    const response = await fetch(image.currentSrc || image.src);
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `veylora-image-${Date.now()}.png`;
+    link.click();
+    URL.revokeObjectURL(url);
+  } catch (_) {
+    window.open(image.currentSrc || image.src, '_blank', 'noopener');
+  }
 }
 
 function regenerate(btn) {
@@ -570,6 +665,8 @@ function handleSend() {
 //  EVENT LISTENERS
 // ─────────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('history-search')?.addEventListener('input', renderHistoryList);
+
   // Scroll to Bottom Button Logic
   const feed = El.chatFeed();
   const btnScroll = El.btnScrollBottom();
@@ -670,6 +767,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Export
   document.getElementById('btn-export-chat').addEventListener('click', App.exportChat);
+  document.getElementById('btn-export-pdf')?.addEventListener('click', App.exportPdf);
 
   // Suggestion cards
   document.querySelectorAll('.suggestion-card').forEach(card => {
@@ -716,25 +814,34 @@ async function handleFileSelect(e) {
       continue;
     }
     
-    // Read file as base64 or text
-    const isImage = file.type.startsWith('image/');
-    const reader = new FileReader();
+    const formData = new FormData();
+    formData.append('file', file);
     
-    reader.onload = (ev) => {
+    try {
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData
+      });
+      if (!res.ok) throw new Error('Upload failed');
+      const data = await res.json();
+      
+      const isImage = file.type.startsWith('image/');
+      let localUrl = null;
+      if (isImage) {
+        localUrl = URL.createObjectURL(file);
+      }
+      
       pendingAttachments.push({
         file,
         name: file.name,
         type: file.type,
-        data: ev.target.result,
-        isImage
+        content: data.content,
+        isImage,
+        localUrl
       });
       renderAttachmentPreview();
-    };
-    
-    if (isImage) {
-      reader.readAsDataURL(file);
-    } else {
-      reader.readAsText(file);
+    } catch (err) {
+      showToast(`⚠️ Upload failed: ${err.message}`, 'error');
     }
   }
   e.target.value = ''; // Reset input
@@ -751,7 +858,7 @@ function renderAttachmentPreview() {
   container.style.display = 'flex';
   container.innerHTML = pendingAttachments.map((att, idx) => `
     <div class="attach-item" title="${att.name}">
-      ${att.isImage ? `<img src="${att.data}" alt="${att.name}">` : `<span>📄</span>`}
+      ${att.isImage && att.localUrl ? `<img src="${att.localUrl}" alt="${att.name}">` : `<span>📄</span>`}
       <span class="file-name">${att.name}</span>
       <button class="remove-btn" aria-label="Remove" onclick="UI.removeAttachment(${idx})">✕</button>
     </div>
@@ -782,5 +889,5 @@ window.UI = {
   openSidebar, closeSidebar, openAgentModal, closeAgentModal,
   openAuthPrompt, closeAuthPrompt,
   setStreamingState, updateSendBtn, updateCharCounter,
-  showToast, copyCode, copyBubble, regenerate,
+  showToast, copyCode, copyBubble, copyQuestion, speakBubble, downloadImage, recoverImage, regenerate,
 };

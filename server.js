@@ -1,8 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════════════
-//  xAI Max — Production Express Backend
-//  NVIDIA NIM API Proxy with SSE Streaming & Agent Orchestration
-// ═══════════════════════════════════════════════════════════════════════════
-
 'use strict';
 
 require('dotenv').config();
@@ -12,282 +7,149 @@ const helmet     = require('helmet');
 const morgan     = require('morgan');
 const rateLimit  = require('express-rate-limit');
 const path       = require('path');
+const crypto     = require('crypto');
 const { OpenAI } = require('openai');
+const Groq       = require('groq-sdk');
+const multer     = require('multer');
+const pdfParse   = require('pdf-parse');
+const mammoth    = require('mammoth');
+const xlsx       = require('xlsx');
+const { createClient } = require('@supabase/supabase-js');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
-// Render and other reverse proxies provide the real client IP in
-// X-Forwarded-For. Trust the first proxy so rate limiting works correctly.
 app.set('trust proxy', 1);
 
-// ─── NVIDIA NIM Client ───────────────────────────────────────────────────────
-// Key is read from .env or passed per-request from the client settings modal
-const createClient = (apiKey) =>
+// Clients
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || 'groq-not-configured' });
+const supabase = createClient(
+  process.env.SUPABASE_URL || 'https://xyz.supabase.co',
+  process.env.SUPABASE_SERVICE_ROLE_KEY || 'dummy_key'
+);
+const createOpenAIClient = (apiKey) =>
   new OpenAI({
     baseURL: 'https://integrate.api.nvidia.com/v1',
     apiKey:  apiKey || process.env.NVIDIA_API_KEY || '',
     timeout: 60000,
   });
 
-async function* streamNvidiaCompletion({ apiKey, model, messages, temperature, maxTokens }) {
-  const response = await fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      Accept: 'text/event-stream',
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      stream: true,
-      temperature,
-      max_tokens: maxTokens,
-    }),
-    signal: AbortSignal.timeout(60000),
-  });
+function getSupabaseOrigin() {
+  const configuredUrl = process.env.SUPABASE_URL?.trim();
+  if (!configuredUrl) return null;
 
-  if (!response.ok) {
-    const details = await response.text().catch(() => '');
-    const error = new Error(`NVIDIA API returned ${response.status}${details ? `: ${details.slice(0, 240)}` : ''}`);
-    error.status = response.status;
-    throw error;
-  }
-  if (!response.body) throw new Error('NVIDIA API returned an empty stream.');
-
-  const decoder = new TextDecoder();
-  let buffer = '';
-  for await (const chunk of response.body) {
-    buffer += decoder.decode(chunk, { stream: true });
-    const blocks = buffer.split(/\r?\n\r?\n/);
-    buffer = blocks.pop() || '';
-    for (const block of blocks) {
-      const data = block.split(/\r?\n/)
-        .filter(line => line.startsWith('data: '))
-        .map(line => line.slice(6))
-        .join('\n')
-        .trim();
-      if (!data || data === '[DONE]') continue;
-      yield JSON.parse(data);
-    }
+  try {
+    const url = new URL(configuredUrl);
+    if (url.protocol !== 'https:') return null;
+    return url.origin;
+  } catch (_) {
+    return null;
   }
 }
 
-// ─── Agent Catalog ───────────────────────────────────────────────────────────
-const AGENTS = [
-  {
-    id:          'nemotron-ultra',
-    name:        'Nemotron Ultra',
-    emoji:       '⚡',
-    model:       'nvidia/llama-3.1-nemotron-ultra-253b-v1',
-    description: 'NVIDIA\'s frontier model — 253B parameters, best for complex multi-step reasoning, agentic workflows and deep analysis.',
-    specialty:   'Frontier Reasoning',
-    speed:       'Deep',
-    color:       '#76b900',
-    system:      'You are xAI Max Ultra, the world\'s most advanced AI assistant powered by NVIDIA Nemotron Ultra 253B. You excel at multi-step reasoning, complex analysis, scientific thinking, and agentic task execution. Always think step-by-step, be precise, and provide exhaustively detailed answers. You are not just an assistant — you are a thinking partner. Always respond in English unless the user specifically requests another language.',
-    development: true
-  },
-  {
-    id:          'nemotron-super',
-    name:        'Nemotron Super',
-    emoji:       '🧠',
-    model:       'nvidia/nemotron-3-super-120b-a12b',
-    description: 'NVIDIA\'s 49B MoE model optimized for agentic workflows, fast reasoning and tool use.',
-    specialty:   'Agentic Tasks',
-    speed:       'Fast',
-    color:       '#76b900',
-    system:      'You are xAI Max Super, powered by NVIDIA Nemotron Super 49B. You are highly optimized for agentic workflows, multi-turn reasoning, tool calling, and efficient task execution. Balance speed with depth — always decompose complex tasks into clear steps. Always respond in English unless the user specifically requests another language.',
-    development: false
-  },
-  {
-    id:          'llama-405b',
-    name:        'Llama 3.1 405B',
-    emoji:       '🦙',
-    model:       'meta/llama-3.1-405b-instruct',
-    description: 'Meta\'s largest open-weight model — 405B parameters, exceptional reasoning and knowledge.',
-    specialty:   'General Intelligence',
-    speed:       'Deep',
-    color:       '#0064e0',
-    system:      'You are xAI Max, powered by Meta\'s Llama 3.1 405B — the largest open-weight AI model ever created. You have vast knowledge across all domains. Be thorough, insightful, and always cite your reasoning. You represent the pinnacle of open AI research. Always respond in English unless the user specifically requests another language.',
-    development: true
-  },
-  {
-    id:          'llama-70b',
-    name:        'Llama 3.3 70B',
-    emoji:       '🔥',
-    model:       'nvidia/nemotron-3-super-120b-a12b',
-    description: 'The most capable 70B model — blazing fast, incredibly smart, the perfect daily driver.',
-    specialty:   'Daily Workhorse',
-    speed:       'Fast',
-    color:       '#0064e0',
-    system:      'You are xAI Max, powered by Meta\'s Llama 3.3 70B. You are fast, smart, and versatile. Excel at everyday tasks, writing, analysis, and coding. Be concise when appropriate, detailed when needed. You are the ideal AI companion. Always respond in English unless the user specifically requests another language.',
-    development: true
-  },
-  {
-    id:          'deepseek-r1',
-    name:        'DeepSeek R1',
-    emoji:       '🔍',
-    model:       'deepseek-ai/deepseek-r1',
-    description: 'Specialized chain-of-thought reasoning model — shows its thinking process for math, logic and science.',
-    specialty:   'Chain-of-Thought',
-    speed:       'Deep',
-    color:       '#4169e1',
-    system:      'You are xAI Max Reason, powered by DeepSeek R1. You specialize in rigorous logical reasoning, mathematics, science, and complex problem-solving. Always show your full chain of thought. Reason step by step before giving your final answer. For math problems, show all work. For logic puzzles, enumerate each deduction. Always respond in English unless the user specifically requests another language.',
-    development: true
-  },
-  {
-    id:          'deepseek-v3',
-    name:        'DeepSeek V3',
-    emoji:       '💻',
-    model:       'deepseek-ai/deepseek-v3.1',
-    description: 'DeepSeek\'s latest general model — outstanding at coding, algorithms and technical tasks.',
-    specialty:   'Coding & Tech',
-    speed:       'Fast',
-    color:       '#4169e1',
-    system:      'You are xAI Max Code, powered by DeepSeek V3. You are an elite software engineer and technical expert. Write clean, efficient, well-commented code. Follow best practices. Explain complex technical concepts clearly. Help debug, architect, and optimize software systems. Always respond in English unless the user specifically requests another language.',
-    development: true
-  },
-  {
-    id:          'mistral-large',
-    name:        'Mistral Large',
-    emoji:       '🌊',
-    model:       'mistralai/mistral-large-2-instruct',
-    description: 'Mistral AI\'s flagship model — multilingual, efficient, excellent for writing and analysis.',
-    specialty:   'Writing & Analysis',
-    speed:       'Fast',
-    color:       '#ff6b35',
-    system:      'You are xAI Max, powered by Mistral Large. You excel at writing, content creation, multilingual tasks, summarization, and nuanced analysis. Your responses are eloquent, structured, and insightful. You adapt your tone to match the user\'s needs. Always respond in English unless the user specifically requests another language.',
-    development: true
-  },
-  {
-    id:          'mistral-nemo',
-    name:        'Mistral NeMo',
-    emoji:       '⚡',
-    model:       'mistralai/mistral-nemotron',
-    description: 'Ultra-fast 12B model by Mistral x NVIDIA — ideal for quick answers and high-volume tasks.',
-    specialty:   'Ultra Speed',
-    speed:       'Lightning',
-    color:       '#ff6b35',
-    system:      'You are xAI Max Fast, powered by Mistral NeMo 12B. You prioritize speed and clarity. Give direct, accurate answers. Avoid unnecessary preamble. Be the fastest and most efficient AI assistant. Always respond in English unless the user specifically requests another language.',
-    development: false
-  },
-  {
-    id:          'gemma-27b',
-    name:        'Gemma 3 27B',
-    emoji:       '🌸',
-    model:       'google/gemma-3-27b-it',
-    description: 'Google\'s open Gemma 3 model — creative, thoughtful, great for nuanced conversations.',
-    specialty:   'Creative & Chat',
-    speed:       'Fast',
-    color:       '#ea4335',
-    system:      'You are xAI Max, powered by Google Gemma 3 27B. You are warm, thoughtful, and creative. Excel at conversations, creative writing, brainstorming, and explaining ideas in engaging ways. Balance intelligence with approachability. Always respond in English unless the user specifically requests another language.',
-    development: true
-  },
-  {
-    id:          'phi-4',
-    name:        'Microsoft Phi-4',
-    emoji:       '🔷',
-    model:       'microsoft/phi-4-mini-instruct',
-    description: 'Microsoft\'s small but mighty Phi-4 — punches far above its weight class in reasoning.',
-    specialty:   'Efficient Reasoning',
-    speed:       'Lightning',
-    color:       '#00bcf2',
-    system:      'You are xAI Max, powered by Microsoft Phi-4. You are compact yet extraordinarily capable at reasoning and structured thinking. Give precise, well-reasoned answers. Demonstrate that intelligence is not just about scale. Always respond in English unless the user specifically requests another language.',
-    development: true
-  },
-  {
-    id:          'kimi-k1',
-    name:        'Kimi K1.5',
-    emoji:       '🌙',
-    model:       'moonshotai/kimi-k2-instruct',
-    description: 'Moonshot AI\'s thinking model — exceptional for long-context tasks, coding and multi-hop reasoning.',
-    specialty:   'Long Context',
-    speed:       'Deep',
-    color:       '#6366f1',
-    system:      'You are xAI Max, powered by Moonshot Kimi K1.5. You excel at long-context understanding, complex multi-hop reasoning, and extended coding tasks. Handle very long documents, codebases, and intricate problem sequences with ease. Always respond in English unless the user specifically requests another language.',
-    development: true
-  },
-  {
-    id:          'llama-vision',
-    name:        'Llama 3.2 Vision',
-    emoji:       '👁️',
-    model:       'meta/llama-3.2-90b-vision-instruct',
-    description: 'Meta\'s 90B vision-language model — understands images, charts, screenshots and documents.',
-    specialty:   'Vision + Language',
-    speed:       'Deep',
-    color:       '#0064e0',
-    system:      'You are xAI Max Vision, powered by Meta Llama 3.2 90B Vision. You can understand and analyze images, charts, screenshots, diagrams, and visual content. Provide detailed, accurate descriptions and insights about what you see. Always respond in English unless the user specifically requests another language.',
-    development: false
-  }
-];
-
-const AUTO_AGENT = {
-  id: 'auto',
-  name: 'Auto',
-  emoji: '✦',
-  description: 'Automatically selects the best NVIDIA model for each request.',
-  specialty: 'Smart Routing',
-  speed: 'Adaptive',
-  color: '#76b900',
+const supabaseOrigin = getSupabaseOrigin();
+const supabaseConfigured = Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
+const requestWindows = new Map();
+const providerStats = new Map();
+const adminSessions = new Map();
+const otpChallenges = new Map();
+let runtimeSettings = {
+  maxUserRequestsPerHour: Math.max(1, Number.parseInt(process.env.MAX_USER_REQUESTS_PER_HOUR || '60', 10)),
+  announcement: '',
+  enabledAgents: [],
+  adminPasswordHash: null,
 };
 
-// ─── Working agents (confirmed available on NVIDIA NIM) ──────────────────────
-// Only these agents are confirmed working. Others are under development.
-const WORKING_AGENT_IDS = new Set([
-  'nemotron-super',   // nvidia/nemotron-3-super-120b-a12b - confirmed working
-  'mistral-nemo',     // mistralai/mistral-nemotron - confirmed working
-  'llama-vision',     // meta/llama-3.2-90b-vision-instruct - vision model
-]);
-
-function isAgentWorking(agentId) {
-  return WORKING_AGENT_IDS.has(agentId);
+function markProvider(provider, ok, error = null) {
+  providerStats.set(provider, { ok, error, checkedAt: new Date().toISOString() });
 }
 
-// ─── Middleware ───────────────────────────────────────────────────────────────
-
-function getRequestText(messages) {
-  const lastUser = [...(Array.isArray(messages) ? messages : [])]
-    .reverse()
-    .find(message => message?.role === 'user');
-  if (!lastUser) return '';
-  if (typeof lastUser.content === 'string') return lastUser.content;
-  if (!Array.isArray(lastUser.content)) return '';
-  return lastUser.content
-    .filter(part => part?.type === 'text')
-    .map(part => part.text || '')
-    .join('\n');
+async function getRequestUser(req) {
+  if (!supabaseConfigured) return null;
+  const token = req.headers.authorization?.startsWith('Bearer ')
+    ? req.headers.authorization.slice(7)
+    : null;
+  if (!token) return null;
+  const { data } = await supabase.auth.getUser(token);
+  return data?.user || null;
 }
 
-function selectAutoAgent(messages) {
-  const text = getRequestText(messages).toLowerCase();
-  const hasImage = (Array.isArray(messages) ? messages : []).some(message =>
-    Array.isArray(message?.content) &&
-    message.content.some(part => part?.type === 'image_url')
-  );
-
-  // Only select from working agents
-  const workingAgents = AGENTS.filter(a => !a.development);
-
-  if (hasImage || /\b(image|photo|screenshot|diagram|chart|visual|pdf)\b/.test(text)) {
-    return workingAgents.find(agent => agent.id === 'llama-vision') || workingAgents[workingAgents.length - 1];
-  }
-  if (/\b(code|coding|program|debug|javascript|typescript|python|api|sql|algorithm|software)\b/.test(text)) {
-    return workingAgents.find(agent => agent.id === 'mistral-nemo') || workingAgents[0];
-  }
-  if (/\b(math|mathematics|equation|calculate|proof|logic|reason)\b/.test(text)) {
-    return workingAgents.find(agent => agent.id === 'nemotron-super') || workingAgents[0];
-  }
-  if (/\b(write|rewrite|story|creative|email|essay|translate|summarize)\b/.test(text)) {
-    return workingAgents.find(agent => agent.id === 'mistral-nemo') || workingAgents[0];
-  }
-  if (text.length < 120 || /\b(quick|fast|simple|brief)\b/.test(text)) {
-    return workingAgents.find(agent => agent.id === 'mistral-nemo') || workingAgents[0];
-  }
-  return workingAgents.find(agent => agent.id === 'mistral-nemo') || workingAgents[0];
+function consumeUserRequest(key) {
+  const now = Date.now();
+  const windowMs = 60 * 60 * 1000;
+  const max = Math.max(1, Number.parseInt(runtimeSettings.maxUserRequestsPerHour || '60', 10));
+  const existing = requestWindows.get(key) || [];
+  const recent = existing.filter(timestamp => now - timestamp < windowMs);
+  if (recent.length >= max) return { allowed: false, remaining: 0 };
+  recent.push(now);
+  requestWindows.set(key, recent);
+  return { allowed: true, remaining: max - recent.length };
 }
 
-// ─── Middleware ───────────────────────────────────────────────────────────────
+function parseCookies(req) {
+  return Object.fromEntries((req.headers.cookie || '').split(';').filter(Boolean).map(part => {
+    const index = part.indexOf('=');
+    return [part.slice(0, index).trim(), decodeURIComponent(part.slice(index + 1).trim())];
+  }));
+}
+
+function isAdminRequest(req) {
+  const legacyKey = process.env.ADMIN_DASHBOARD_KEY && req.headers['x-admin-key'] === process.env.ADMIN_DASHBOARD_KEY;
+  const sessionId = parseCookies(req).xai_admin_session;
+  return Boolean(legacyKey || (sessionId && adminSessions.has(sessionId)));
+}
+
+function safeSecretEqual(leftValue, rightValue) {
+  const left = Buffer.from(String(leftValue || ''));
+  const right = Buffer.from(String(rightValue || ''));
+  return left.length === right.length && crypto.timingSafeEqual(left, right);
+}
+
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const derived = crypto.scryptSync(String(password), salt, 64).toString('hex');
+  return `${salt}:${derived}`;
+}
+
+function verifyPassword(password, stored) {
+  if (!stored || !stored.includes(':')) return false;
+  const [salt, expected] = stored.split(':');
+  const actual = crypto.scryptSync(String(password), salt, 64).toString('hex');
+  return safeSecretEqual(actual, expected);
+}
+
+function adminSettingsResponse() {
+  const { adminPasswordHash, ...safeSettings } = runtimeSettings;
+  return safeSettings;
+}
+
+async function loadRuntimeSettings() {
+  if (!supabaseConfigured) return;
+  const { data } = await supabase.from('app_settings').select('value').eq('id', 'runtime').maybeSingle();
+  if (data?.value && typeof data.value === 'object') runtimeSettings = { ...runtimeSettings, ...data.value };
+}
+
+async function streamOpenAIChat(client, model, messages, sendEvent) {
+  const stream = await client.chat.completions.create({ model, messages, stream: true });
+  for await (const chunk of stream) {
+    const content = chunk.choices[0]?.delta?.content || '';
+    if (content) sendEvent({ type: 'delta', content });
+  }
+}
+
+// Agent Catalog
+const AGENTS = [
+  { id: 'lightning', provider: 'groq', model: 'openai/gpt-oss-120b', name: 'Lightning' },
+  { id: 'reasoning', provider: 'groq', model: 'qwen/qwen3.8-27b', name: 'Reasoning' },
+  { id: 'coder', provider: 'groq', model: 'openai/gpt-oss-20b', name: 'Coder' },
+  { id: 'writer', provider: 'groq', model: 'openai/gpt-oss-20b', name: 'Writer' },
+  { id: 'creative', provider: 'groq', model: 'openai/gpt-oss-20b', name: 'Creative' },
+  { id: 'image-gen', provider: 'pollinations', model: 'flux', name: 'Image Gen' },
+  { id: 'analyst', provider: 'gemini', model: 'gemini-2.0-flash', name: 'Analyst' },
+  { id: 'artist', provider: 'pollinations', model: 'flux', name: 'Artist' },
+];
+if (!runtimeSettings.enabledAgents.length) runtimeSettings.enabledAgents = AGENTS.map(agent => agent.id);
+
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -295,263 +157,461 @@ app.use(helmet({
       scriptSrc:   ["'self'", "'unsafe-inline'", 'cdnjs.cloudflare.com', 'cdn.jsdelivr.net'],
       styleSrc:    ["'self'", "'unsafe-inline'", 'fonts.googleapis.com', 'cdnjs.cloudflare.com'],
       fontSrc:     ["'self'", 'fonts.gstatic.com'],
-      imgSrc:      ["'self'", 'data:', 'blob:'],
-      connectSrc:  ["'self'", 'https://nrtkdiwvrfqmvwwrmlvg.supabase.co'],
+      imgSrc:      ["'self'", 'data:', 'blob:', 'https://image.pollinations.ai'],
+      connectSrc:  [
+        "'self'",
+        ...(supabaseOrigin ? [supabaseOrigin] : []),
+        'https://api.groq.com',
+        'https://api-inference.huggingface.co',
+        'https://integrate.api.nvidia.com',
+        'https://generativelanguage.googleapis.com',
+        'https://image.pollinations.ai',
+      ],
     }
   }
 }));
 
-app.use(cors({
-  origin:      process.env.CORS_ORIGIN || '*',
-  credentials: true
-}));
-
+app.use(cors({ origin: process.env.CORS_ORIGIN || '*', credentials: true }));
 app.use(morgan('dev'));
-app.use(express.json({ limit: '4mb' }));
+app.use(express.json({ limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Rate limiter — protect NVIDIA API quota
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max:      parseInt(process.env.RATE_LIMIT || '100'),
-  message:  { error: 'Too many requests. Please wait a moment.' },
-  standardHeaders: true,
-  legacyHeaders:   false
+  max: parseInt(process.env.RATE_LIMIT || '100'),
 });
 app.use('/api/', limiter);
 
-// ─── Utility: Sanitize messages ───────────────────────────────────────────────
 function sanitizeMessages(messages) {
   if (!Array.isArray(messages)) return [];
-  return messages
-    .filter(m => m && typeof m.role === 'string' && (typeof m.content === 'string' || Array.isArray(m.content)))
-    .map(m => ({
-      role:    ['user', 'assistant', 'system'].includes(m.role) ? m.role : 'user',
-      content: Array.isArray(m.content) ? m.content : String(m.content).slice(0, 32000)
-    }))
-    .slice(-50); // keep last 50 messages max
+  return messages.filter(m => m && typeof m.role === 'string').map(m => ({
+    role: m.role,
+    content: m.content
+  })).slice(-50);
 }
 
-// ─── GET /api/models ──────────────────────────────────────────────────────────
-app.get('/api/models', (_req, res) => {
-  // Only return working agents (non-development) plus Auto
-  const workingAgents = AGENTS.filter(a => !a.development);
-  res.json({ agents: [AUTO_AGENT, ...workingAgents].map(({ id, name, emoji, model, description, specialty, speed, color, development }) =>
-    ({ id, name, emoji, model, description, specialty, speed, color, development: !!development })
-  )});
+// Upload endpoint
+const upload = multer({ storage: multer.memoryStorage() });
+app.post('/api/upload', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    const { originalname, buffer, mimetype } = req.file;
+    let content = '';
+    
+    if (mimetype === 'application/pdf' || originalname.endsWith('.pdf')) {
+      const data = await pdfParse(buffer);
+      content = data.text;
+    } else if (mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || originalname.endsWith('.docx')) {
+      const result = await mammoth.extractRawText({ buffer });
+      content = result.value;
+    } else if (mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || originalname.endsWith('.xlsx')) {
+      const workbook = xlsx.read(buffer, { type: 'buffer' });
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      content = xlsx.utils.sheet_to_csv(sheet);
+    } else {
+      content = buffer.toString('utf-8');
+    }
+    
+    res.json({ success: true, filename: originalname, type: 'text', content });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// ─── GET /api/health ─────────────────────────────────────────────────────────
-app.get('/api/health', (_req, res) => {
-  res.json({
-    status:    'ok',
-    version:   '1.0.0',
-    agents:       AGENTS.length,
-    hasServerKey: !!(process.env.NVIDIA_API_KEY && process.env.NVIDIA_API_KEY.trim() !== ''),
-    timestamp:    new Date().toISOString()
-  });
-
+app.post('/api/log-qa', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Missing or invalid authorization header' });
+    }
+    const token = authHeader.split(' ')[1];
+    
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+    
+    const { conversation_id, conversationId, question, answer, agent_id, agentId, model } = req.body;
+    const name = user.user_metadata?.full_name || user.user_metadata?.name || null;
+    const email = user.email || null;
+    
+    const { error: insertError } = await supabase
+      .from('question_logs')
+      .insert([
+        {
+          user_id: user.id,
+          name,
+          email,
+          conversation_id: conversation_id || conversationId || null,
+          question,
+          answer,
+          agent_id: agent_id || agentId || null,
+          model,
+        }
+      ]);
+      
+    if (insertError) throw insertError;
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// Only public client configuration is safe to send to the browser.
-app.get('/api/config', (_req, res) => {
+app.post('/api/chat', async (req, res) => {
+  const { messages, agentId, systemPrompt } = req.body;
+  let agent = AGENTS.find(a => a.id === agentId) || AGENTS[0];
+  const requestUser = await getRequestUser(req);
+  const quota = consumeUserRequest(requestUser?.id || `ip:${req.ip}`);
+  res.setHeader('X-RateLimit-Remaining', String(quota.remaining));
+  if (!quota.allowed) return res.status(429).json({ error: 'Hourly request limit reached. Please try again later.' });
+  
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+  
+  const sendEvent = (data) => res.write("data: " + JSON.stringify(data) + "\n\n");
+  sendEvent({ type: 'agent', agent });
+  
+  try {
+    const sysMsg = { role: 'system', content: systemPrompt || 'You are a helpful assistant.' };
+    const fullMsgs = [sysMsg, ...sanitizeMessages(messages)];
+
+    if (agent.provider === 'groq') {
+      try {
+        await streamOpenAIChat(groq, agent.model, fullMsgs, sendEvent);
+        markProvider('groq', true);
+      } catch (primaryError) {
+        markProvider('groq', false, primaryError.message);
+        if (!process.env.NVIDIA_API_KEY) throw primaryError;
+        sendEvent({ type: 'fallback', from: 'groq', to: 'nvidia' });
+        await streamOpenAIChat(createOpenAIClient(), 'openai/gpt-oss-120b', fullMsgs, sendEvent);
+        markProvider('nvidia', true);
+      }
+      sendEvent({ type: 'done' });
+    } 
+    else if (agent.provider === 'gemini') {
+      if (!process.env.GEMINI_API_KEY) throw new Error('Gemini is not configured. Add GEMINI_API_KEY to the server environment.');
+
+      const contents = fullMsgs
+        .filter(message => message.role !== 'system')
+        .map(message => ({
+          role: message.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: String(message.content || '') }],
+        }));
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(agent.model)}:streamGenerateContent?alt=sse&key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: sysMsg.content }] },
+            contents,
+            generationConfig: { temperature: 0.7 },
+          }),
+        }
+      );
+      if (!response.ok) throw new Error(`Gemini Error: ${response.status}`);
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+      for await (const chunk of response.body) {
+        buffer += decoder.decode(chunk, { stream: true });
+        const lines = buffer.split(/\r?\n/);
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+            const content = data.candidates?.[0]?.content?.parts?.map(part => part.text || '').join('') || '';
+            if (content) sendEvent({ type: 'delta', content });
+          } catch (_) {}
+        }
+      }
+      sendEvent({ type: 'done' });
+    }
+    else if (agent.provider === 'pollinations') {
+      const prompt = fullMsgs[fullMsgs.length - 1]?.content || 'A beautiful digital illustration';
+      const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?model=${encodeURIComponent(agent.model)}&nologo=true`;
+      const fallbackUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?model=turbo&nologo=true`;
+      sendEvent({ type: 'image', url: imageUrl, fallbackUrl });
+      markProvider('pollinations', true);
+      sendEvent({ type: 'done' });
+    }
+    else if (agent.provider === 'huggingface') {
+      const url = "https://api-inference.huggingface.co/models/" + agent.model;
+      const hfToken = process.env.HF_TOKEN;
+      
+      if (agent.id === 'image-gen') {
+        // Image generation
+        const prompt = fullMsgs[fullMsgs.length - 1].content;
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Authorization': "Bearer " + hfToken,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ inputs: prompt })
+        });
+        
+        if (!response.ok) throw new Error("HF Error: " + response.status);
+        
+        const arrayBuffer = await response.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        const base64 = buffer.toString('base64');
+        sendEvent({ type: 'image', url: "data:image/jpeg;base64," + base64 });
+        sendEvent({ type: 'done' });
+      } 
+      else {
+        // Text streaming for HF
+        const response = await fetch(url + '/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': "Bearer " + hfToken,
+            'Content-Type': 'application/json',
+            'Accept': 'text/event-stream'
+          },
+          body: JSON.stringify({
+            model: agent.model,
+            messages: fullMsgs,
+            stream: true
+          })
+        });
+        
+        if (!response.ok) {
+           if (process.env.NVIDIA_API_KEY) {
+             // fallback to NVIDIA
+             const fallbackClient = createOpenAIClient();
+             const stream = await fallbackClient.chat.completions.create({
+               model: 'openai/gpt-oss-120b',
+               messages: fullMsgs,
+               stream: true
+             });
+             for await (const chunk of stream) {
+               const content = chunk.choices[0]?.delta?.content || '';
+               if (content) sendEvent({ type: 'delta', content });
+             }
+             sendEvent({ type: 'done' });
+             return res.end();
+           } else {
+             throw new Error("HF Error: " + response.status);
+           }
+        }
+        
+        const decoder = new TextDecoder();
+        for await (const chunk of response.body) {
+          const text = decoder.decode(chunk);
+          const lines = text.split('\n');
+          for (const line of lines) {
+            if (line.startsWith('data: ') && line !== 'data: [DONE]') {
+              try {
+                const data = JSON.parse(line.slice(6));
+                const content = data.choices[0]?.delta?.content || '';
+                if (content) sendEvent({ type: 'delta', content });
+              } catch (e) {}
+            }
+          }
+        }
+        sendEvent({ type: 'done' });
+      }
+    }
+  } catch (err) {
+    sendEvent({ type: 'error', message: err.message });
+  } finally {
+    res.end();
+  }
+});
+
+app.get('/api/health', (req, res) => res.json({
+  status: 'ok',
+  hasServerKey: Boolean(process.env.NVIDIA_API_KEY || process.env.GROQ_API_KEY || process.env.HF_TOKEN || process.env.GEMINI_API_KEY),
+}));
+
+app.get('/api/models', async (req, res) => {
+  let availableModels = [];
+  if (req.query.live === '1' && process.env.GROQ_API_KEY) {
+    try {
+      const result = await groq.models.list();
+      availableModels = result.data.map(model => model.id);
+      markProvider('groq', true);
+    } catch (error) {
+      markProvider('groq', false, error.message);
+    }
+  }
+  const catalog = [
+    { id: 'auto', name: 'Auto', emoji: '✦', specialty: 'Smart Routing', speed: 'Adaptive', color: '#76b900' },
+    { id: 'lightning', name: 'Lightning', emoji: '⚡', provider: 'groq', model: 'openai/gpt-oss-120b', specialty: 'Daily Workhorse', speed: 'Fast', color: '#0064e0' },
+    { id: 'reasoning', name: 'Reasoning', emoji: '🧠', provider: 'groq', model: 'qwen/qwen3.8-27b', specialty: 'Advanced Logic', speed: 'Deep', color: '#4169e1' },
+    { id: 'coder', name: 'Coder', emoji: '🧑‍💻', provider: 'groq', model: 'openai/gpt-oss-20b', specialty: 'Coding & Tech', speed: 'Fast', color: '#4169e1' },
+    { id: 'writer', name: 'Writer', emoji: '🌊', provider: 'groq', model: 'openai/gpt-oss-20b', specialty: 'Writing & Analysis', speed: 'Fast', color: '#ff6b35' },
+    { id: 'creative', name: 'Creative', emoji: '🌸', provider: 'groq', model: 'openai/gpt-oss-20b', specialty: 'Creative & Chat', speed: 'Fast', color: '#ea4335' },
+    { id: 'image-gen', name: 'Image Gen', emoji: '🎨', provider: 'pollinations', model: 'flux', specialty: 'Image Generation', speed: 'Adaptive', color: '#a855f7' },
+    { id: 'analyst', name: 'Analyst', emoji: '🔎', provider: 'gemini', model: 'gemini-2.0-flash', specialty: 'Files & Analysis', speed: 'Adaptive', color: '#34a853' },
+    { id: 'artist', name: 'Artist', emoji: '🖼️', provider: 'pollinations', model: 'flux', specialty: 'Free Image Generation', speed: 'Adaptive', color: '#f59e0b' }
+  ];
+  res.json({ availableModels, agents: catalog.filter(agent => agent.id === 'auto' || runtimeSettings.enabledAgents.includes(agent.id)) });
+});
+
+app.get('/api/config', (req, res) => {
   res.json({
     supabaseUrl: process.env.SUPABASE_URL || '',
     supabaseAnonKey: process.env.SUPABASE_ANON_KEY || '',
+    announcement: runtimeSettings.announcement || '',
   });
 });
 
-// ─── POST /api/chat (SSE Streaming) ──────────────────────────────────────────
-app.post('/api/chat', async (req, res) => {
-  const { messages, agentId, temperature = 0.7, maxTokens = 2048, systemPrompt } = req.body;
-
-  // Resolve agent
-  const requestedAgent = AGENTS.find(a => a.id === agentId);
-  let agent = agentId === 'auto'
-    ? selectAutoAgent(messages)
-    : requestedAgent || AGENTS.find(a => a.id === 'llama-70b');
-
-  // Resolve API key (client-provided > .env)
-  const resolvedKey = process.env.NVIDIA_API_KEY;
-  if (!resolvedKey || resolvedKey === 'nvapi-your-key-here') {
-    return res.status(503).json({ error: 'NVIDIA API key is not configured on the server.' });
-  }
-
-  const client = createClient(resolvedKey);
-
-  // Build message list: system prompt first
-  const systemMessage  = {
-    role: 'system',
-    content: [agent.system, typeof systemPrompt === 'string' ? systemPrompt.trim() : '']
-      .filter(Boolean)
-      .join('\n\n')
-  };
-  const sanitized      = sanitizeMessages(messages);
-  const fullMessages   = [systemMessage, ...sanitized];
-
-  // ── Set SSE headers ──
-  res.setHeader('Content-Type',  'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection',    'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
-  res.flushHeaders();
-
-  // Helper to write SSE events
-  const sendEvent = (data) => {
-    if (!res.writableEnded) {
-      res.write(`data: ${JSON.stringify(data)}\n\n`);
-    }
-  };
-
-  // Send agent info at start
-  sendEvent({
-    type: 'agent',
-    agent: { id: agent.id, name: agent.name, model: agent.model },
-    requestedAgentId: agentId || 'llama-70b',
-    autoRouted: agentId === 'auto'
+app.get('/api/providers', (req, res) => {
+  res.json({
+    providers: ['groq', 'nvidia', 'gemini', 'pollinations', 'huggingface'].map(provider => ({
+      provider,
+      configured: provider === 'pollinations' || Boolean({
+        groq: process.env.GROQ_API_KEY,
+        nvidia: process.env.NVIDIA_API_KEY,
+        gemini: process.env.GEMINI_API_KEY,
+        huggingface: process.env.HF_TOKEN,
+      }[provider]),
+      ...(providerStats.get(provider) || { ok: null, error: null, checkedAt: null }),
+    })),
   });
+});
 
-  let totalTokens = 0;
-
+app.get('/api/groq-models', async (req, res) => {
+  if (!process.env.GROQ_API_KEY) return res.status(503).json({ error: 'Groq is not configured.' });
   try {
-    const requestOptions = () => ({
-      apiKey: resolvedKey,
-      model: agent.model,
-      messages: fullMessages,
-      temperature: Math.min(Math.max(parseFloat(temperature) || 0.7, 0), 2),
-      maxTokens: Math.min(parseInt(maxTokens) || 4096, 8192),
-    });
-    let emittedContent = false;
-    let stream = streamNvidiaCompletion(requestOptions());
-
-    try {
-      for await (const chunk of stream) {
-        if (res.writableEnded) break;
-
-        const delta   = chunk.choices?.[0]?.delta?.content || '';
-        const finish  = chunk.choices?.[0]?.finish_reason;
-        const usage   = chunk.usage;
-
-        if (delta) {
-          emittedContent = true;
-          sendEvent({ type: 'delta', content: delta });
-        }
-        if (usage) totalTokens = usage.total_tokens;
-        if (finish) {
-          sendEvent({ type: 'done', finish_reason: finish, total_tokens: totalTokens });
-          break;
-        }
-        if (!res.write('')) {
-          await new Promise(resolve => res.once('drain', resolve));
-        }
-      }
-    } catch (err) {
-      const fallback = AGENTS.find(candidate => candidate.model === 'nvidia/nemotron-3-super-120b-a12b');
-      const canFallback = !emittedContent && (
-        [400, 404, 408, 409, 429, 500, 502, 503, 504].includes(err.status) ||
-        ['ABORT_ERR', 'ECONNRESET', 'ETIMEDOUT', 'UND_ERR_CONNECT_TIMEOUT'].includes(err.code)
-      );
-      if (!canFallback || !fallback || fallback.model === agent.model) throw err;
-      agent = fallback;
-      sendEvent({
-        type: 'agent',
-        agent: { id: agent.id, name: agent.name, model: agent.model },
-        requestedAgentId: agentId || 'llama-70b',
-        fallback: true
-      });
-      for await (const chunk of streamNvidiaCompletion(requestOptions())) {
-      if (res.writableEnded) break;
-
-      const delta   = chunk.choices?.[0]?.delta?.content || '';
-      const finish  = chunk.choices?.[0]?.finish_reason;
-      const usage   = chunk.usage;
-
-      if (delta) {
-        sendEvent({ type: 'delta', content: delta });
-      }
-
-      if (usage) {
-        totalTokens = usage.total_tokens;
-      }
-
-      if (finish) {
-        sendEvent({ type: 'done', finish_reason: finish, total_tokens: totalTokens });
-        break;
-      }
-
-      // Backpressure: if client is slow, pause briefly
-      if (!res.write('')) {
-        await new Promise(resolve => res.once('drain', resolve));
-      }
-      }
-    }
-
-  } catch (err) {
-    console.error('[xAI Max] Stream error:', err.message);
-
-    // Classify error for better UX
-    let userMessage = 'An unexpected error occurred.';
-    let statusCode  = 500;
-
-    if (err.status === 401 || err.message?.includes('401')) {
-      userMessage = 'Invalid NVIDIA API key. Please check your key in Settings.';
-      statusCode  = 401;
-    } else if (err.status === 429 || err.message?.includes('429')) {
-      userMessage = 'Rate limit reached. Please wait a moment and try again.';
-      statusCode  = 429;
-    } else if (err.status === 404 || err.status === 410 || err.message?.includes('404') || err.message?.includes('410')) {
-      userMessage = `Model "${agent.model}" not available. Try a different agent.`;
-      statusCode  = err.status || 404;
-    } else if (err.code === 'ECONNRESET' || err.code === 'ETIMEDOUT') {
-      userMessage = 'Connection to NVIDIA API timed out. Please retry.';
-    }
-
-    if (!res.writableEnded) {
-      sendEvent({ type: 'error', message: userMessage, status: statusCode });
-    }
-  } finally {
-    if (!res.writableEnded) res.end();
+    const result = await groq.models.list();
+    res.json({ models: result.data.map(model => ({ id: model.id, ownedBy: model.owned_by })) });
+  } catch (error) {
+    markProvider('groq', false, error.message);
+    res.status(502).json({ error: 'Groq model discovery failed.' });
   }
 });
 
-// ─── POST /api/validate-key ───────────────────────────────────────────────────
-app.post('/api/validate-key', async (req, res) => {
-  const { apiKey } = req.body;
-  if (!apiKey?.startsWith('nvapi-')) {
-    return res.json({ valid: false, message: 'Key must start with nvapi-' });
+app.post('/api/admin/login', (req, res) => {
+  const { uid, password } = req.body || {};
+  if (!process.env.ADMIN_UID || !process.env.ADMIN_PASSWORD) {
+    return res.status(503).json({ error: 'Admin credentials are not configured on the server.' });
   }
-  try {
-    const client = createClient(apiKey);
-    // Test with a tiny completion
-    await client.chat.completions.create({
-      model:      'meta/llama-3.3-70b-instruct',
-      messages:   [{ role: 'user', content: 'hi' }],
-      max_tokens: 1,
-      stream:     false
-    });
-    res.json({ valid: true, message: 'API key validated successfully!' });
-  } catch (err) {
-    const invalid = err.status === 401;
-    res.json({
-      valid:   !invalid,
-      message: invalid ? 'Invalid API key.' : 'Key appears valid (model may be unavailable).'
-    });
-  }
+  const validUid = safeSecretEqual(uid, process.env.ADMIN_UID);
+  const validPassword = runtimeSettings.adminPasswordHash
+    ? verifyPassword(password, runtimeSettings.adminPasswordHash)
+    : safeSecretEqual(password, process.env.ADMIN_PASSWORD);
+  if (!validUid || !validPassword) return res.status(401).json({ error: 'Invalid admin credentials.' });
+  const sessionId = crypto.randomBytes(32).toString('hex');
+  adminSessions.set(sessionId, { createdAt: Date.now(), uid: process.env.ADMIN_UID });
+  res.setHeader('Set-Cookie', `xai_admin_session=${sessionId}; HttpOnly; SameSite=Lax; Path=/; Max-Age=28800${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`);
+  res.json({ success: true, uid: process.env.ADMIN_UID });
 });
 
-// ─── Fallback: serve index.html for all other routes ─────────────────────────
-app.get('*', (_req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+app.post('/api/admin/logout', (req, res) => {
+  const sessionId = parseCookies(req).xai_admin_session;
+  if (sessionId) adminSessions.delete(sessionId);
+  res.setHeader('Set-Cookie', 'xai_admin_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0');
+  res.json({ success: true });
 });
 
-// ─── Start Server ─────────────────────────────────────────────────────────────
+app.post('/api/admin/users', async (req, res) => {
+  if (!isAdminRequest(req)) return res.status(403).json({ error: 'Admin access required.' });
+  if (!supabaseConfigured) return res.status(503).json({ error: 'Supabase is not configured.' });
+  const { email, password, name } = req.body || {};
+  if (!email || !password || String(password).length < 8) return res.status(400).json({ error: 'Email and a password of at least 8 characters are required.' });
+  const { data, error } = await supabase.auth.admin.createUser({
+    email: String(email).trim().toLowerCase(),
+    password: String(password),
+    email_confirm: true,
+    user_metadata: { name: String(name || '').trim().slice(0, 120) },
+  });
+  if (error) return res.status(400).json({ error: error.message });
+  res.status(201).json({ user: { id: data.user.id, email: data.user.email, name: data.user.user_metadata?.name || null } });
+});
+
+app.post('/api/admin/forgot-password', async (req, res) => {
+  const { uid } = req.body || {};
+  if (!process.env.ADMIN_UID || !safeSecretEqual(uid, process.env.ADMIN_UID)) return res.status(202).json({ success: true });
+  const code = String(crypto.randomInt(100000, 1000000));
+  const challenge = { codeHash: hashPassword(code), expiresAt: Date.now() + 10 * 60 * 1000, attempts: 0 };
+  otpChallenges.set(String(uid), challenge);
+  const recipient = process.env.ADMIN_RECOVERY_EMAIL;
+  if (process.env.RESEND_API_KEY && recipient && process.env.ADMIN_OTP_FROM) {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: process.env.ADMIN_OTP_FROM, to: [recipient], subject: 'Veylora admin recovery code', text: `Your Veylora admin recovery code is ${code}. It expires in 10 minutes.` }),
+    });
+    if (!response.ok) return res.status(502).json({ error: 'Recovery email could not be sent.' });
+    return res.json({ success: true, delivery: 'email' });
+  }
+  if (process.env.NODE_ENV === 'production') return res.status(503).json({ error: 'Configure recovery email delivery before using OTP recovery.' });
+  res.json({ success: true, delivery: 'development', otp: code });
+});
+
+app.post('/api/admin/reset-password', async (req, res) => {
+  const { uid, otp, newPassword } = req.body || {};
+  const challenge = otpChallenges.get(String(uid));
+  if (!challenge || Date.now() > challenge.expiresAt || challenge.attempts >= 5) return res.status(401).json({ error: 'Invalid or expired OTP.' });
+  if (!verifyPassword(otp, challenge.codeHash)) {
+    challenge.attempts += 1;
+    return res.status(401).json({ error: 'Invalid or expired OTP.' });
+  }
+  if (!newPassword || String(newPassword).length < 8) return res.status(400).json({ error: 'New password must be at least 8 characters.' });
+  runtimeSettings.adminPasswordHash = hashPassword(newPassword);
+  if (supabaseConfigured) {
+    const { error } = await supabase.from('app_settings').upsert({ id: 'runtime', value: runtimeSettings, updated_at: new Date().toISOString() });
+    if (error) return res.status(502).json({ error: error.message });
+  }
+  otpChallenges.delete(String(uid));
+  res.json({ success: true });
+});
+
+app.get('/api/admin/settings', async (req, res) => {
+  if (!isAdminRequest(req)) return res.status(403).json({ error: 'Admin access required.' });
+  await loadRuntimeSettings();
+  res.json({ settings: adminSettingsResponse() });
+});
+
+app.put('/api/admin/settings', async (req, res) => {
+  if (!isAdminRequest(req)) return res.status(403).json({ error: 'Admin access required.' });
+  const incoming = req.body || {};
+  const next = {
+    maxUserRequestsPerHour: Math.min(10000, Math.max(1, Number.parseInt(incoming.maxUserRequestsPerHour || runtimeSettings.maxUserRequestsPerHour, 10))),
+    announcement: String(incoming.announcement ?? runtimeSettings.announcement).slice(0, 500),
+    enabledAgents: Array.isArray(incoming.enabledAgents)
+      ? incoming.enabledAgents.filter(id => AGENTS.some(agent => agent.id === id))
+      : runtimeSettings.enabledAgents,
+    adminPasswordHash: runtimeSettings.adminPasswordHash || null,
+  };
+  runtimeSettings = next;
+  if (supabaseConfigured) {
+    const { error } = await supabase.from('app_settings').upsert({ id: 'runtime', value: next, updated_at: new Date().toISOString() });
+    if (error) return res.status(502).json({ error: error.message });
+  }
+  res.json({ success: true, settings: adminSettingsResponse() });
+});
+
+app.get('/api/admin/summary', async (req, res) => {
+  if (!isAdminRequest(req)) return res.status(403).json({ error: 'Admin access required.' });
+  if (!supabaseConfigured) return res.status(503).json({ error: 'Supabase is not configured.' });
+
+  const [{ data: users, error: usersError }, { data: logs, error: logsError }] = await Promise.all([
+    supabase.auth.admin.listUsers({ page: 1, perPage: 1000 }),
+    supabase.from('question_logs').select('name,email,agent_id,model,created_at').order('created_at', { ascending: false }).limit(5000),
+  ]);
+  if (usersError || logsError) return res.status(502).json({ error: usersError?.message || logsError?.message });
+  const usage = {};
+  for (const log of logs || []) {
+    const key = log.email || log.user_id || 'unknown';
+    usage[key] = usage[key] || { name: log.name, email: log.email, requests: 0, agents: {} };
+    usage[key].requests += 1;
+    usage[key].agents[log.agent_id || 'unknown'] = (usage[key].agents[log.agent_id || 'unknown'] || 0) + 1;
+  }
+  res.json({ users: (users?.users || []).map(item => ({ id: item.id, name: item.user_metadata?.full_name || item.user_metadata?.name || null, email: item.email, createdAt: item.created_at })), usage: Object.values(usage), providers: [...providerStats.entries()] });
+});
+
+app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+
+void loadRuntimeSettings();
 app.listen(PORT, () => {
-  console.log(`\n  ✦ xAI Max is running`);
-  console.log(`  ─────────────────────────────`);
-  console.log(`  🌐  http://localhost:${PORT}`);
-  console.log(`  🤖  ${AGENTS.length + 1} agents available (including Auto)`);
-  console.log(`  🔑  API key: ${process.env.NVIDIA_API_KEY ? '✅ loaded from .env' : '⚠️  not set (use Settings panel)'}`);
-  console.log(`\n`);
+  console.log("Running on " + PORT);
 });
 
 module.exports = app;

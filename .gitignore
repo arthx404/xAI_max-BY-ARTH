@@ -1,6 +1,28 @@
-node_modules
+# Secrets
+.streamlit/secrets.toml
 .env
-.DS_Store
-archive.zip
-*.log
+.env.*
+!.env.example
 imprtance backend and more parts/
+
+# Dependencies and local runtime output
+node_modules/
+server-runtime*.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
